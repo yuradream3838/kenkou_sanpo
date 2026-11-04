@@ -1,6 +1,6 @@
 // アプリ本体をキャッシュしてオフラインでも記録できるようにする。
 // 地図タイルは国土地理院のサーバーから都度取得する（キャッシュしない）。
-const VERSION = 'hakken-note-v0.3.0';
+const VERSION = 'hakken-note-v0.4.0';
 const SHELL = [
   './',
   './index.html',
@@ -47,9 +47,11 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // 地図タイル等はブラウザに任せる
 
-  // ネットワーク優先（更新をすぐ反映）、オフライン時はキャッシュ
+  // ネットワーク優先（更新をすぐ反映）、オフライン時はキャッシュ。
+  // cache: 'no-cache' でブラウザの HTTP キャッシュ（GitHub Pages は最大10分）を使わず、
+  // 毎回サーバーに更新の有無を確認する（変更がなければ 304 で軽い）。
   event.respondWith(
-    fetch(req)
+    fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' })
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

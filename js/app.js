@@ -7,7 +7,7 @@ import { renderGo } from './go.js';
 
 /* global L */
 
-const APP_VERSION = '0.3.0';
+const APP_VERSION = '0.4.0';
 const EXPORT_FORMAT = 'hakken-note-export';
 
 const main = document.getElementById('main');
@@ -842,9 +842,31 @@ async function requestPersistence() {
   }
 }
 
+// 更新の反映：アプリを開いたとき・画面に戻ってきたときに新しい版を確認し、
+// 新しい版に切り替わったら（入力途中でなければ）自動で再読み込みする。
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('SW registration failed', err));
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return; // 初回インストール時は再読み込み不要
+    if (formDirty) {
+      toast('新しいバージョンがあります。保存後に画面を開き直すと反映されます', 5000);
+      return;
+    }
+    reloading = true;
+    location.reload();
+  });
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' });
+      const check = () => reg.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') check();
+      });
+      setInterval(check, 30 * 60 * 1000);
+    } catch (err) {
+      console.warn('SW registration failed', err);
+    }
   });
 }
 
