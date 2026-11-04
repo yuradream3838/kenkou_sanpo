@@ -249,3 +249,4 @@ body[data-route="new"] .fab, body[data-route="edit"] .fab { display: none; }
 .trip-name { font-weight: 700; }
 .trip-actions { margin-left: auto; display: flex; gap: 6px; }
 .nav a { font-size: 0.68rem; }
+.cooldown-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: -4px; }

@@ -7,7 +7,10 @@ import { createMap, categoryMarker } from './map.js';
 /* global L */
 
 const SETTINGS_KEY = 'go-settings';
-const DEFAULTS = { mode: 'near', baseType: 'current', baseStation: '', minKm: 2, maxKm: 10, excludeVisited: true };
+const DEFAULTS = { mode: 'near', baseType: 'current', baseStation: '', minKm: 2, maxKm: 10, excludeVisited: true, cooldown: 5 };
+const RECENT_KEY = 'go-recent'; // 抽選で出た駅名（新しい順）
+const COOLDOWN_OPTIONS = [0, 1, 3, 5, 10, 20, 30, 50];
+const RECENT_MAX = 50;
 const MIN_OPTIONS = [0, 1, 2, 3, 5, 10, 20];
 const MAX_OPTIONS = [2, 3, 5, 10, 15, 20, 30, 50];
 const NEARBY_KM = 1.5; // 「駅の周りの発見」とみなす距離
@@ -25,6 +28,32 @@ function saveSettings(s) {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
   } catch {
     /* 保存できなくても動作は続ける */
+  }
+}
+
+function loadRecent() {
+  try {
+    const v = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecent(name) {
+  const list = [name, ...loadRecent()].slice(0, RECENT_MAX);
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+  } catch {
+    /* 保存できなくても動作は続ける */
+  }
+}
+
+function clearRecent() {
+  try {
+    localStorage.removeItem(RECENT_KEY);
+  } catch {
+    /* noop */
   }
 }
 
@@ -63,7 +92,6 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
   const stations = data.stations;
   const byName = new Map(stations.map((s) => [s.n, s]));
   const settings = loadSettings();
-  let lastResult = null;
   let resultMap = null;
 
   main.innerHTML = `
@@ -101,6 +129,11 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
 
       <label class="check"><input type="checkbox" name="excludeVisited" ${settings.excludeVisited ? 'checked' : ''}> 行ったことのある駅を除く</label>
 
+      <label>一度出た駅を出さない期間
+        <select name="cooldown">${COOLDOWN_OPTIONS.map((v) => `<option value="${v}" ${v === settings.cooldown ? 'selected' : ''}>${v === 0 ? 'なし（同じ駅が続けて出てもよい）' : `その後 ${v} 回の抽選`}</option>`).join('')}</select>
+      </label>
+      <p class="muted small cooldown-note"><span id="recent-info"></span> <button type="button" class="btn ghost small" id="recent-reset">抽選履歴をリセット</button></p>
+
       <button type="submit" class="btn primary big" id="draw">🎲 行き先を決める</button>
     </form>
 
@@ -127,6 +160,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
       minKm: Number(fd.get('minKm')),
       maxKm: Number(fd.get('maxKm')),
       excludeVisited: fd.get('excludeVisited') === 'on',
+      cooldown: Number(fd.get('cooldown')) || 0,
     };
   }
 
@@ -135,7 +169,25 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
     document.getElementById('near-options').hidden = s.mode !== 'near';
     document.getElementById('base-station-wrap').hidden = s.baseType !== 'station';
   }
+  function renderRecentInfo() {
+    const s = readForm();
+    const recent = loadRecent().slice(0, s.cooldown);
+    document.getElementById('recent-info').textContent = s.cooldown
+      ? recent.length
+        ? `いま除外中：${[...new Set(recent)].join('、')}`
+        : 'いま除外中の駅はありません。'
+      : '同じ駅が続けて出ることもあります。';
+    document.getElementById('recent-reset').hidden = !s.cooldown || !recent.length;
+  }
+  document.getElementById('recent-reset').addEventListener('click', () => {
+    clearRecent();
+    renderRecentInfo();
+    toast('抽選履歴をリセットしました');
+  });
+  renderRecentInfo();
+
   form.addEventListener('change', () => {
+    renderRecentInfo();
     syncVisibility();
     saveSettings(readForm());
   });
@@ -236,13 +288,35 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
       return;
     }
 
-    const choice = pickRandom(list, lastResult?.n);
-    lastResult = choice;
-    await showResult(choice, { count: list.length, baseLabel, base });
+    // 直近 cooldown 回に出た駅を除く。候補がなくなる場合は除外する回数を減らす。
+    const recent = loadRecent();
+    let pool = list;
+    let usedCooldown = 0;
+    for (let k = Math.min(s.cooldown, recent.length); k > 0; k--) {
+      const skip = new Set(recent.slice(0, k));
+      const filtered = list.filter((st) => !skip.has(st.n));
+      if (filtered.length) {
+        pool = filtered;
+        usedCooldown = k;
+        break;
+      }
+    }
+    const cooldownNote =
+      s.cooldown && usedCooldown < Math.min(s.cooldown, recent.length)
+        ? usedCooldown
+          ? `候補が少ないため、直近 ${usedCooldown} 回分だけ除外しました。`
+          : '候補が少ないため、最近出た駅も含めて選びました。'
+        : '';
+
+    const choice = pickRandom(pool);
+    pushRecent(choice.n);
+    renderRecentInfo();
+    await showResult(choice, { count: pool.length, baseLabel, base, cooldownNote });
   }
 
-  async function showResult(st, { count, baseLabel, base }) {
+  async function showResult(st, { count, baseLabel, base, cooldownNote = '' }) {
     if (resultMap) {
+      resultMap.stop();
       resultMap.remove();
       resultMap = null;
     }
@@ -265,7 +339,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
 
     resultEl.innerHTML = `
       <div class="card go-result">
-        <p class="muted small">候補 ${count} 駅から選びました</p>
+        <p class="muted small">候補 ${count} 駅から選びました${cooldownNote ? `<br>${esc(cooldownNote)}` : ''}</p>
         <p class="station-name">${esc(st.n)}<small>駅</small></p>
         <ul class="lines">${st.l.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
         ${st.km !== null ? `<p>${esc(baseLabel)} 直線で約 <b>${st.km.toFixed(1)} km</b></p>` : ''}
@@ -286,9 +360,10 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
     L.circle([st.lat, st.lng], { radius: NEARBY_KM * 1000, color: '#2f6f4f', weight: 1, fillOpacity: 0.05 }).addTo(resultMap);
     if (base) {
       L.circleMarker([base.lat, base.lng], { radius: 6, color: '#1e88e5', fillColor: '#1e88e5', fillOpacity: 1 }).addTo(resultMap);
-      resultMap.fitBounds([[base.lat, base.lng], [st.lat, st.lng]], { padding: [30, 30], maxZoom: 14 });
+      resultMap.fitBounds([[base.lat, base.lng], [st.lat, st.lng]], { padding: [30, 30], maxZoom: 14, animate: false });
     }
-    setTimeout(() => resultMap && resultMap.invalidateSize(), 50);
+    const shownMap = resultMap;
+    setTimeout(() => shownMap === resultMap && shownMap.invalidateSize({ animate: false }), 50);
 
     document.getElementById('go-again').addEventListener('click', draw);
     const commit = document.getElementById('go-commit');

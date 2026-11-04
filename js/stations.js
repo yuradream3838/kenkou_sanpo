@@ -41,11 +41,10 @@ export function candidates(stations, { base = null, minKm = 0, maxKm = Infinity,
     .filter((s) => s.km === null || (s.km >= minKm && s.km <= maxKm));
 }
 
-// 暗号論的乱数で一様に 1 つ選ぶ（直前と同じ駅はなるべく避ける）
-export function pickRandom(list, avoidName = null) {
+// 暗号論的乱数で一様に 1 つ選ぶ
+export function pickRandom(list) {
   if (!list.length) return null;
-  const pool = list.length > 1 && avoidName ? list.filter((s) => s.n !== avoidName) : list;
   const buf = new Uint32Array(1);
   crypto.getRandomValues(buf);
-  return pool[buf[0] % pool.length];
+  return list[buf[0] % list.length];
 }

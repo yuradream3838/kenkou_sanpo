@@ -7,7 +7,7 @@ import { renderGo } from './go.js';
 
 /* global L */
 
-const APP_VERSION = '0.2.0';
+const APP_VERSION = '0.3.0';
 const EXPORT_FORMAT = 'hakken-note-export';
 
 const main = document.getElementById('main');
@@ -94,7 +94,13 @@ function storageSet(key, value) {
 }
 
 function cleanup() {
-  maps.forEach((m) => m.remove());
+  maps.forEach((m) => {
+    try {
+      m.remove(); // おでかけ画面で既に外した地図が含まれることがある
+    } catch {
+      /* noop */
+    }
+  });
   maps = [];
   objectUrls.forEach((u) => URL.revokeObjectURL(u));
   objectUrls = [];
