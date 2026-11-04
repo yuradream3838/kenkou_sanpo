@@ -19,7 +19,11 @@
 - 地図：国土地理院タイル（淡色 / 標準 / 航空写真）上に発見を表示
 - 発見図鑑：未発見カテゴリは「探し方のヒント」を表示
 - レベル・称号・統計（発見数、探索日数、裏付け済み数）
-- データの書き出し / 読み込み（JSON、写真込み）
+- おでかけ：散策のスタート駅をランダムに決める（神奈川県 347 駅）
+  - 「距離で選ぶ」：現在地または指定した駅から、最短〜最長 km の範囲で抽選
+  - 「県内どこでも」：県内の全駅から抽選
+  - 行った駅を除外、今日のお題（図鑑の未登録カテゴリ）、駅コレクション（行った駅 / 全駅）
+- データの書き出し / 読み込み（JSON、写真・おでかけ履歴込み）
 - オフライン対応（Service Worker）
 
 ## プライバシー設計
@@ -42,10 +46,29 @@ js/categories.js      図鑑カテゴリ（ここを編集すれば種類を増�
 js/progress.js        経験値・レベル・称号
 js/image.js           写真の縮小と EXIF 除去
 js/map.js             地図（Leaflet + 国土地理院タイル）
+js/go.js              おでかけ（行き先の抽選・駅コレクション）
+js/stations.js        駅データの読み込み・距離計算・抽選
+data/stations/14.json 神奈川県の駅一覧（tools/build_stations.py で生成）
 sw.js                 Service Worker
 vendor/leaflet/       Leaflet 1.9.4（BSD-2-Clause）
 privacy.html          プライバシーポリシー（下書き）
 ```
+
+## 駅データ
+
+`data/stations/14.json` は「国土数値情報（鉄道データ）令和6年度 国土交通省」を加工して作成しています。
+同じ駅名で 800m 以内の駅（乗換駅）は 1 駅にまとめています。
+
+再生成・他県の追加:
+
+```bash
+python3 -I tools/build_stations.py N02-24_Station.geojson japan.geojson 14 data/stations/14.json
+```
+
+- `N02-24_Station.geojson`：[国土数値情報 鉄道データ](https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-2024.html) の駅データ
+- `japan.geojson`：都道府県境界（[dataofjapan/land](https://github.com/dataofjapan/land)、地球地図日本ベース）。県内判定にのみ使用し、リポジトリには含めない
+- 境界付近で判定がずれる駅は、スクリプト内の `OVERRIDES` で補正する（出力に境界付近の駅一覧が出るので確認に使う）
+- 他県を追加したら `js/stations.js` の `PREFECTURES` に登録する
 
 ## ローカルで動かす
 

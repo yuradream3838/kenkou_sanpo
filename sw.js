@@ -1,6 +1,6 @@
 // アプリ本体をキャッシュしてオフラインでも記録できるようにする。
 // 地図タイルは国土地理院のサーバーから都度取得する（キャッシュしない）。
-const VERSION = 'hakken-note-v0.1.0';
+const VERSION = 'hakken-note-v0.2.0';
 const SHELL = [
   './',
   './index.html',
@@ -12,6 +12,9 @@ const SHELL = [
   './js/progress.js',
   './js/image.js',
   './js/map.js',
+  './js/stations.js',
+  './js/go.js',
+  './data/stations/14.json',
   './manifest.webmanifest',
   './vendor/leaflet/leaflet.js',
   './vendor/leaflet/leaflet.css',

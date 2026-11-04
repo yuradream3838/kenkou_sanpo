@@ -3,10 +3,11 @@ import { CATEGORIES, getCategory } from './categories.js';
 import { DEPTHS, depthOf, xpOf, summarize, FIRST_IN_CATEGORY_BONUS } from './progress.js';
 import { processPhoto, blobToDataURL, dataURLToBlob } from './image.js';
 import { createMap, categoryMarker } from './map.js';
+import { renderGo } from './go.js';
 
 /* global L */
 
-const APP_VERSION = '0.1.0';
+const APP_VERSION = '0.2.0';
 const EXPORT_FORMAT = 'hakken-note-export';
 
 const main = document.getElementById('main');
@@ -162,6 +163,8 @@ async function router() {
         return await renderForm(route.id);
       case 'view':
         return await renderDetail(route.id);
+      case 'go':
+        return await renderGo({ main, esc, toast, addMap: (m) => maps.push(m), updateHeader });
       case 'settings':
         return await renderSettings();
       default:
@@ -722,7 +725,7 @@ async function renderSettings() {
     </section>
     <section class="card">
       <h3>すべて削除</h3>
-      <p class="muted small">この端末に保存された発見をすべて削除します。元に戻せません。</p>
+      <p class="muted small">この端末に保存された発見と、おでかけの履歴をすべて削除します。元に戻せません。</p>
       <button class="btn danger" id="wipe">すべて削除</button>
     </section>`;
 
@@ -732,6 +735,7 @@ async function renderSettings() {
     if (!confirm(`${items.length}件の発見をすべて削除します。よろしいですか？`)) return;
     if (!confirm('本当に削除しますか？ 書き出していないデータは失われます。')) return;
     await db.clearAll();
+    await db.clearTrips();
     toast('すべて削除しました');
     router();
   });
@@ -746,7 +750,8 @@ async function exportData(items) {
       thumb: it.thumb ? await blobToDataURL(it.thumb) : null,
     });
   }
-  const json = JSON.stringify({ format: EXPORT_FORMAT, version: 1, exportedAt: new Date().toISOString(), items: out });
+  const trips = await db.getTrips();
+  const json = JSON.stringify({ format: EXPORT_FORMAT, version: 2, exportedAt: new Date().toISOString(), items: out, trips });
   const blob = new Blob([json], { type: 'application/json' });
   const a = document.createElement('a');
   const d = new Date();
@@ -797,7 +802,22 @@ async function importData(e) {
       await db.put(item);
       count++;
     }
-    toast(`${count}件を読み込みました（同じ記録は上書き）`);
+    let tripCount = 0;
+    for (const t of Array.isArray(data.trips) ? data.trips : []) {
+      if (!t || typeof t.id !== 'string' || typeof t.name !== 'string') continue;
+      await db.putTrip({
+        id: str(t.id, 100),
+        name: str(t.name, 100),
+        lat: Number.isFinite(t.lat) ? t.lat : null,
+        lng: Number.isFinite(t.lng) ? t.lng : null,
+        lines: Array.isArray(t.lines) ? t.lines.slice(0, 20).map((l) => str(l, 100)) : [],
+        theme: str(t.theme, 40),
+        decidedAt: str(t.decidedAt, 40) || new Date().toISOString(),
+        visitedAt: str(t.visitedAt, 40) || null,
+      });
+      tripCount++;
+    }
+    toast(`発見${count}件・おでかけ履歴${tripCount}件を読み込みました（同じ記録は上書き）`);
     router();
   } catch (err) {
     toast('読み込みに失敗しました：' + err.message, 4000);
