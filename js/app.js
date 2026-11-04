@@ -4,10 +4,10 @@ import { DEPTHS, depthOf, xpOf, summarize, FIRST_IN_CATEGORY_BONUS } from './pro
 import { processPhoto, blobToDataURL, dataURLToBlob } from './image.js';
 import { createMap, categoryMarker } from './map.js';
 import { renderGo } from './go.js';
+import { CHANGELOG, APP_VERSION, compareVersions } from './changelog.js';
 
 /* global L */
 
-const APP_VERSION = '0.4.0';
 const EXPORT_FORMAT = 'hakken-note-export';
 
 const main = document.getElementById('main');
@@ -171,6 +171,8 @@ async function router() {
         return await renderDetail(route.id);
       case 'go':
         return await renderGo({ main, esc, toast, addMap: (m) => maps.push(m), updateHeader });
+      case 'changelog':
+        return await renderChangelog();
       case 'settings':
         return await renderSettings();
       default:
@@ -730,6 +732,11 @@ async function renderSettings() {
       <p><a href="privacy.html">プライバシーポリシー・利用上の注意</a></p>
     </section>
     <section class="card">
+      <h3>更新履歴</h3>
+      ${changelogHtml(CHANGELOG.slice(0, 2))}
+      <p><a href="#/changelog">すべての更新履歴を見る（${CHANGELOG.length}件）</a></p>
+    </section>
+    <section class="card">
       <h3>すべて削除</h3>
       <p class="muted small">この端末に保存された発見と、おでかけの履歴をすべて削除します。元に戻せません。</p>
       <button class="btn danger" id="wipe">すべて削除</button>
@@ -745,6 +752,63 @@ async function renderSettings() {
     toast('すべて削除しました');
     router();
   });
+}
+
+// ---------- 更新履歴 ----------
+
+function changelogHtml(entries) {
+  return `<ol class="changelog">${entries
+    .map(
+      (e) => `
+      <li>
+        <p class="cl-head"><b>v${esc(e.version)}</b> <span class="muted small">${esc(formatDate(e.date))}</span>${e.version === APP_VERSION ? ' <span class="badge">最新</span>' : ''}</p>
+        <ul>${e.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>
+      </li>`
+    )
+    .join('')}</ol>`;
+}
+
+async function renderChangelog() {
+  await updateHeader();
+  main.innerHTML = `
+    <h2>更新履歴</h2>
+    <p class="muted small">いま使っているのは v${esc(APP_VERSION)} です。</p>
+    <section class="card">${changelogHtml(CHANGELOG)}</section>
+    <p><a class="btn" href="#/settings">設定に戻る</a></p>`;
+  markVersionSeen();
+}
+
+const SEEN_VERSION_KEY = 'seen-version';
+
+function markVersionSeen() {
+  storageSet(SEEN_VERSION_KEY, APP_VERSION);
+  document.getElementById('update-banner').hidden = true;
+}
+
+// 更新後に初めて開いたとき、前回見たバージョン以降の更新内容をお知らせする
+function showUpdateBanner() {
+  const seen = storageGet(SEEN_VERSION_KEY);
+  // 以前から使っている人（このお知らせ機能より前の版の利用者）を判定する手がかり
+  const returning = seen || storageGet('safety-dismissed') || storageGet('go-settings');
+  if (!returning) {
+    storageSet(SEEN_VERSION_KEY, APP_VERSION); // 初めて使う人には出さない
+    return;
+  }
+  const since = seen || '0.3.0'; // お知らせ機能がなかった頃の利用者は 0.4.0 以降を表示
+  const fresh = CHANGELOG.filter((e) => compareVersions(e.version, since) > 0);
+  if (!fresh.length) return;
+  const banner = document.getElementById('update-banner');
+  banner.innerHTML = `
+    <div class="ub-body">
+      <b>🎉 v${esc(APP_VERSION)} に更新しました</b>
+      <ul>${fresh.flatMap((e) => e.items).slice(0, 3).map((i) => `<li>${esc(i)}</li>`).join('')}</ul>
+      <div class="row">
+        <a class="btn small primary" href="#/changelog">更新履歴を見る</a>
+        <button type="button" class="btn small ghost" id="ub-close">閉じる</button>
+      </div>
+    </div>`;
+  banner.hidden = false;
+  document.getElementById('ub-close').addEventListener('click', markVersionSeen);
 }
 
 async function exportData(items) {
@@ -889,4 +953,5 @@ window.addEventListener('hashchange', () => {
   router();
 });
 
+showUpdateBanner();
 router();
