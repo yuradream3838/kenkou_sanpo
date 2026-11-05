@@ -265,6 +265,15 @@ async function renderList(params) {
     </section>
     <p class="xp-line">Lv.${s.level}「${esc(s.title)}」 ${s.xp} XP ・ 次のレベルまで ${s.next - s.xp} XP</p>
 
+    ${cat ? (() => {
+      const cc = getCategory(cat);
+      return `<div class="card cat-head" style="--c:${cc.color}">
+        <span class="icon">${cc.icon}</span>
+        <div><b>${esc(cc.name)}</b><br><span class="muted small">見つけたもの ${filtered.length} 件</span></div>
+        <span class="row"><a class="btn small" href="#/guide/${cc.id}">探し方</a><a class="btn small ghost" href="#/zukan">図鑑へ</a></span>
+      </div>`;
+    })() : ''}
+
     <form class="filters" id="filters">
       <select name="cat" aria-label="カテゴリで絞り込み">
         <option value="">すべての種類</option>
@@ -831,10 +840,16 @@ async function renderZukan() {
     const n = s.catCounts[c.id] || 0;
     const d = DIFFICULTY[c.difficulty] || DIFFICULTY[1];
     return n > 0
-      ? `<li class="found"><a href="#/guide/${c.id}" style="--c:${c.color}">
-          <span class="icon">${c.icon}</span>
-          <span class="name">${esc(c.name)}</span>
-          <span class="count">${n} 件</span></a></li>`
+      ? `<li class="found"><div style="--c:${c.color}">
+          <a class="tile-main" href="#/list?cat=${c.id}" aria-label="${esc(c.name)}の見つけたもの ${n} 件">
+            <span class="icon">${c.icon}</span>
+            <span class="name">${esc(c.name)}</span>
+            <span class="count">${n} 件</span>
+          </a>
+          <span class="tile-actions">
+            <a class="btn small primary" href="#/list?cat=${c.id}">見つけたもの</a>
+            <a class="btn small" href="#/guide/${c.id}">探し方</a>
+          </span></div></li>`
       : `<li class="locked"><a href="#/guide/${c.id}">
           <span class="icon">？</span>
           <span class="name">${esc(c.name)}</span>
@@ -846,7 +861,7 @@ async function renderZukan() {
   main.innerHTML = `
     <h2>発見図鑑</h2>
     <p>登録した種類 <b>${s.discoveredCats}</b> ・ 発見 <b>${s.total}</b> 件</p>
-    <p class="muted small">種類をタップすると、見分け方や探す場所のガイドが見られます。</p>
+    <p class="muted small">見つけた種類は「見つけたもの」でその種類の発見の一覧へ、「探し方」で見分け方や探す場所のガイドへ進めます。</p>
     ${GROUPS.map((g) => `
       <h3 class="zukan-group">${esc(g.name)}</h3>
       <ul class="zukan">${categoriesInGroup(g.id).map(tile).join('')}</ul>`).join('')}
