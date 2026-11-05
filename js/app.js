@@ -4,7 +4,7 @@ import { DEPTHS, depthOf, xpOf, summarize, FIRST_IN_CATEGORY_BONUS } from './pro
 import { processPhoto, blobToDataURL, dataURLToBlob } from './image.js';
 import { createMap, categoryMarker, LAYERS, layerName } from './map.js';
 import { renderGo } from './go.js';
-import { getActiveTrip, STATUS_LABEL } from './trip.js';
+import { getActiveTrip, STATUS_LABEL, walkDuration, formatDuration, tripNotes } from './trip.js';
 import { CHANGELOG, APP_VERSION, compareVersions } from './changelog.js';
 
 /* global L */
@@ -230,7 +230,7 @@ async function renderList(params) {
     ${active ? `
     <a class="card active-mini" href="#/go">
       <span class="at-label">🚩 いまのおでかけ <span class="status ${active.status}">${STATUS_LABEL[active.status]}</span></span>
-      <b>${esc(active.name)}駅${active.status === 'arrived' ? 'を散策中' : 'へ向かう'}</b>
+      <b>${esc(active.name)}駅${active.status === 'arrived' ? `を散歩中（${formatDuration(walkDuration(active)) || '0分'}）` : 'へ向かう'}</b>
       <span class="small">目的：${activeGoal ? `${activeGoal.icon} ${esc(activeGoal.name)}を探す` : '自由に歩く'}</span>
     </a>` : ''}
 
@@ -993,6 +993,13 @@ async function importData(e) {
         theme: str(t.theme, 40),
         goal: str(t.goal, 40) || null,
         memo: str(t.memo, 200),
+        notes: Array.isArray(t.notes)
+          ? t.notes
+              .filter((n) => n && typeof n.text === 'string')
+              .slice(0, 500)
+              .map((n) => ({ id: str(n.id, 100) || newId(), text: str(n.text, 200), at: str(n.at, 40) }))
+          : [],
+        walkStartedAt: str(t.walkStartedAt, 40) || null,
         status: ['going', 'arrived', 'done'].includes(t.status) ? t.status : 'done',
         decidedAt: str(t.decidedAt, 40) || new Date().toISOString(),
         visitedAt: str(t.visitedAt, 40) || null,
@@ -1036,7 +1043,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', async () => {
     try {
       const reg = await navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' });
-      const check = () => reg.update().catch(() => {});
+      const check = () => reg?.update?.().catch(() => {});
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') check();
       });

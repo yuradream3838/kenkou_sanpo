@@ -313,3 +313,17 @@ body[data-route="new"] .fab, body[data-route="edit"] .fab { display: none; }
 .m0 { margin: 0 0 4px; }
 .active-mini { display: flex; flex-direction: column; gap: 2px; border: 2px solid var(--accent); color: inherit; text-decoration: none; }
 .trip-link { background: var(--accent-soft); border-radius: 8px; padding: 8px 12px; display: flex !important; }
+
+/* 散歩の記録 */
+.at-elapsed { margin: 0 0 4px; font-weight: 700; color: var(--accent); }
+.note-form { display: flex; gap: 6px; margin: 10px 0 4px; }
+.note-form input { flex: 1; min-width: 0; }
+.at-timeline { text-align: left; }
+.timeline { list-style: none; padding: 0; margin: 4px 0; }
+.timeline li { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: 0.9rem; }
+.timeline .tl-time { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.8rem; flex: none; width: 3em; }
+.timeline .tl-text { flex: 1; word-break: break-word; }
+.timeline .tl-start .tl-text, .timeline .tl-end .tl-text { color: var(--accent); font-weight: 700; }
+.timeline .tl-del { min-height: 28px; padding: 0 8px; }
+.trip-detail { flex-basis: 100%; order: 5; font-size: 0.88rem; }
+.trip-detail summary { cursor: pointer; color: var(--accent); }
