@@ -1,6 +1,7 @@
 // おでかけ：散策のスタート駅をランダムに決める。
 import * as db from './db.js';
-import { CATEGORIES } from './categories.js';
+import { CATEGORIES, GROUPS, getCategory, categoriesInGroup } from './categories.js';
+import { STATUS_LABEL, isActive, isIOS, directionsUrls } from './trip.js';
 import { loadStations, candidates, pickRandom, distanceKm, nearestStation, lineGroups } from './stations.js';
 import { createMap, categoryMarker } from './map.js';
 
@@ -99,6 +100,8 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
 
   main.innerHTML = `
     <h2>おでかけ</h2>
+    <div id="active-trip"></div>
+    <h3 class="go-form-title" id="go-form-title">🎲 行き先を決める</h3>
     <p class="muted small">${esc(data.prefName)}の ${stations.length} 駅から、散策のスタート地点をランダムに決めます。</p>
 
     <form class="card go-form" id="go-form">
@@ -232,6 +235,98 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
   });
   syncVisibility();
 
+  // ---- いまのおでかけ ----
+  const goalOptions = (selected) => `
+    <option value="" ${!selected ? 'selected' : ''}>決めずに自由に歩く</option>
+    ${GROUPS.map((g) => `<optgroup label="${esc(g.name)}">${categoriesInGroup(g.id)
+      .filter((c) => c.id !== 'sonota')
+      .map((c) => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>${c.icon} ${esc(c.name)}を探す</option>`)
+      .join('')}</optgroup>`).join('')}`;
+
+  const directionsButtons = (t) => {
+    const u = directionsUrls(t);
+    return `<a class="btn" href="${u.google}" target="_blank" rel="noopener noreferrer">🗺 行き方を調べる</a>
+      ${isIOS() ? `<a class="btn ghost small" href="${u.apple}" target="_blank" rel="noopener noreferrer">Appleマップで開く</a>` : ''}`;
+  };
+
+  async function renderActive() {
+    const el = document.getElementById('active-trip');
+    const trips = await db.getTrips();
+    const t = trips.find(isActive);
+    document.getElementById('go-form-title').textContent = t ? '🎲 別の行き先を決める' : '🎲 行き先を決める';
+    if (!t) {
+      el.innerHTML = '';
+      return null;
+    }
+    const items = (await db.getAll()).filter((it) => it.tripId === t.id);
+    const goal = t.goal ? getCategory(t.goal) : null;
+    const achieved = goal && items.some((it) => it.category === goal.id);
+    const arrived = t.status === 'arrived';
+    el.innerHTML = `
+      <section class="card active-trip">
+        <p class="at-label">🚩 いまのおでかけ <span class="status ${t.status}">${STATUS_LABEL[t.status]}</span></p>
+        <p class="station-name">${esc(t.name)}<small>駅</small> <span class="at-to">${arrived ? 'を散策中' : 'へ向かう'}</span></p>
+        ${t.lines?.length ? `<ul class="lines">${t.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
+
+        <div class="at-goal">
+          <p><b>目的</b>：${goal
+            ? `駅の周りで「${goal.icon} ${esc(goal.name)}」を探す ${achieved ? '<span class="badge">✔ 達成！</span>' : ''}
+               <a href="#/guide/${goal.id}" class="small">探し方を見る</a>`
+            : '決めずに自由に歩いて、気になったものを記録する'}</p>
+          <label class="small">目的を変える
+            <select id="at-goal">${goalOptions(t.goal)}</select>
+          </label>
+          <label class="small">ひとことメモ（自分用）
+            <input id="at-memo" maxlength="100" value="${esc(t.memo || '')}" placeholder="例：古い道しるべを探す／喫茶店でひと休み">
+          </label>
+        </div>
+
+        <p class="at-count">このおでかけの発見：<b>${items.length}</b> 件</p>
+        ${items.length ? `<ul class="at-items">${items.slice(0, 6).map((it) => `<li><a href="#/view/${encodeURIComponent(it.id)}">${getCategory(it.category).icon} ${esc(it.title || '（無題の発見）')}</a></li>`).join('')}</ul>` : ''}
+
+        <div class="row go-actions">
+          ${arrived
+            ? `<a class="btn primary" href="#/new${t.goal ? `?cat=${t.goal}` : ''}">＋ 発見を記録する</a>
+               <button type="button" class="btn" data-act="finish">おでかけを終える</button>`
+            : `<button type="button" class="btn primary" data-act="arrive">📍 着いた！</button>
+               ${directionsButtons(t)}`}
+        </div>
+        <p class="at-steps muted small">${arrived
+          ? '気になるものを見つけたら「発見を記録する」。帰るときは「おでかけを終える」を押してください。'
+          : '駅に着いたら「着いた！」を押してください。移動中に見つけたものも記録できます。'}</p>
+        <button type="button" class="btn ghost small" data-act="cancel">このおでかけを取りやめる</button>
+      </section>`;
+
+    el.querySelector('#at-goal').addEventListener('change', async (e) => {
+      await db.putTrip({ ...t, goal: e.target.value || null });
+      renderActive();
+    });
+    el.querySelector('#at-memo').addEventListener('change', async (e) => {
+      await db.putTrip({ ...(await db.getTrips()).find((x) => x.id === t.id), memo: e.target.value.trim() });
+      toast('メモを保存しました');
+    });
+    el.querySelectorAll('button[data-act]').forEach((btn) =>
+      btn.addEventListener('click', async () => {
+        const cur = (await db.getTrips()).find((x) => x.id === t.id);
+        const now = new Date().toISOString();
+        if (btn.dataset.act === 'arrive') {
+          await db.putTrip({ ...cur, status: 'arrived', visitedAt: cur.visitedAt || now });
+          toast(`${cur.name}駅に到着！ 駅コレクションに追加しました`, 3500);
+        } else if (btn.dataset.act === 'finish') {
+          await db.putTrip({ ...cur, status: 'done', endedAt: now });
+          toast(`おでかけ終了：発見 ${items.length} 件${achieved ? '・目的達成！' : ''}。おつかれさまでした`, 4500);
+        } else if (btn.dataset.act === 'cancel') {
+          if (!confirm(`${cur.name}駅へのおでかけを取りやめますか？${items.length ? '（記録した発見は残ります）' : ''}`)) return;
+          if (cur.visitedAt) await db.putTrip({ ...cur, status: 'done', endedAt: now });
+          else await db.removeTrip(cur.id);
+        }
+        await renderActive();
+        ({ visited } = await renderTrips());
+      })
+    );
+    return t;
+  }
+
   // ---- 履歴・コレクション ----
   async function renderTrips() {
     const trips = await db.getTrips();
@@ -239,25 +334,27 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
     const n = [...visited].filter((name) => byName.has(name)).length;
     document.getElementById('collection').innerHTML = `行った駅 <b>${n}</b> / ${stations.length}（${((n / stations.length) * 100).toFixed(1)}%）`;
     document.getElementById('collection-bar').style.width = `${(n / stations.length) * 100}%`;
+    const past = trips.filter((t) => !isActive(t));
     const list = document.getElementById('trips');
-    list.innerHTML = trips.length
-      ? trips
+    list.innerHTML = past.length
+      ? past
           .slice(0, 50)
-          .map(
-            (t) => `
+          .map((t) => {
+            const goal = t.goal || t.theme ? getCategory(t.goal || t.theme) : null;
+            return `
         <li data-id="${esc(t.id)}">
           <span class="trip-name">${esc(t.name)}駅</span>
-          <span class="muted small">${t.visitedAt ? `✔ ${formatDay(t.visitedAt)} に行った` : `${formatDay(t.decidedAt)} に決定`}</span>
+          <span class="muted small">${t.visitedAt ? `✔ ${formatDay(t.visitedAt)} に行った` : `${formatDay(t.decidedAt)} に決定（未訪問）`}${goal ? ` ・ ${goal.icon}` : ''}</span>
           <span class="trip-actions">
             ${t.visitedAt
               ? `<button type="button" class="btn ghost small" data-act="unvisit">取り消し</button>`
               : `<button type="button" class="btn small" data-act="visit">行った！</button>`}
             <button type="button" class="btn ghost small" data-act="delete" aria-label="${esc(t.name)}駅を履歴から削除">✕</button>
           </span>
-        </li>`
-          )
+        </li>`;
+          })
           .join('')
-      : '<li class="muted small">まだ履歴はありません。行き先を決めて「ここに行く！」を押すと記録されます。</li>';
+      : '<li class="muted small">まだ履歴はありません。行き先を決めて「ここに行く！」を押すと、おでかけが始まります。</li>';
     return { trips, visited };
   }
 
@@ -280,6 +377,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
     ({ visited } = await renderTrips());
   });
 
+  await renderActive();
   let { visited } = await renderTrips();
 
   // ---- 抽選 ----
@@ -393,7 +491,6 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
 
     const { theme, items, isNew } = await pickTheme();
     const nearby = items.filter((it) => it.location && distanceKm(it.location, st) <= NEARBY_KM).length;
-    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${st.n}駅 神奈川県`)}`;
 
     resultEl.innerHTML = `
       <div class="card go-result">
@@ -401,13 +498,17 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
         <p class="station-name">${esc(st.n)}<small>駅</small></p>
         <ul class="lines">${st.l.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
         ${st.km !== null ? `<p>${esc(baseLabel)} 直線で約 <b>${st.km.toFixed(1)} km</b></p>` : ''}
-        <p class="hint">今日のお題：駅の周りで<b>「${theme.icon} ${esc(theme.name)}」</b>を探してみよう${isNew ? '（図鑑に未登録！）' : ''}<br><span class="small">${esc(theme.hint)} <a href="#/guide/${theme.id}">探し方を見る</a></span></p>
+        <div class="hint">
+          <p class="m0">目的（お題）：駅の周りで<b>「${theme.icon} ${esc(theme.name)}」</b>を探す${isNew ? '（図鑑に未登録！）' : ''}</p>
+          <p class="m0 small">${esc(theme.hint)} <a href="#/guide/${theme.id}">探し方を見る</a></p>
+          <label class="small m0">目的を変える<select id="go-goal">${goalOptions(theme.id)}</select></label>
+        </div>
         <div class="minimap" id="go-map"></div>
         <p class="muted small">${nearby ? `この駅の周り（${NEARBY_KM}km）には、あなたの発見が ${nearby} 件あります。` : 'この駅の周りでの発見はまだありません。'}</p>
         <div class="row go-actions">
           <button type="button" class="btn primary" id="go-commit">ここに行く！</button>
           <button type="button" class="btn" id="go-again">🎲 もう一回</button>
-          <a class="btn ghost" href="${mapsUrl}" target="_blank" rel="noopener noreferrer">地図アプリで見る</a>
+          ${directionsButtons(st)}
         </div>
       </div>`;
     drawBtn.disabled = false;
@@ -426,20 +527,38 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
     document.getElementById('go-again').addEventListener('click', draw);
     const commit = document.getElementById('go-commit');
     commit.addEventListener('click', async () => {
+      const now = new Date().toISOString();
+      const current = (await db.getTrips()).find(isActive);
+      if (current) {
+        if (!confirm(`いまのおでかけ（${current.name}駅）を終えて、${st.n}駅へのおでかけを始めますか？`)) return;
+        if (current.visitedAt) await db.putTrip({ ...current, status: 'done', endedAt: now });
+        else await db.removeTrip(current.id);
+      }
       commit.disabled = true;
+      const goal = document.getElementById('go-goal').value || null;
       await db.putTrip({
         id: newId(),
         name: st.n,
         lat: st.lat,
         lng: st.lng,
         lines: st.l,
-        theme: theme.id,
-        decidedAt: new Date().toISOString(),
+        goal,
+        memo: '',
+        status: 'going',
+        decidedAt: now,
         visitedAt: null,
+        endedAt: null,
       });
-      commit.textContent = '✔ 履歴に追加しました';
-      toast(`${st.n}駅へ！ 着いたら履歴の「行った！」を押してください`, 4000);
+      resultEl.innerHTML = '';
+      if (resultMap) {
+        resultMap.stop();
+        resultMap.remove();
+        resultMap = null;
+      }
+      await renderActive();
       ({ visited } = await renderTrips());
+      document.getElementById('active-trip').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      toast(`${st.n}駅へのおでかけを始めました！`, 3500);
     });
     resultEl.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
   }

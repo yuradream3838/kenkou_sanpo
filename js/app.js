@@ -4,6 +4,7 @@ import { DEPTHS, depthOf, xpOf, summarize, FIRST_IN_CATEGORY_BONUS } from './pro
 import { processPhoto, blobToDataURL, dataURLToBlob } from './image.js';
 import { createMap, categoryMarker, LAYERS, layerName } from './map.js';
 import { renderGo } from './go.js';
+import { getActiveTrip, STATUS_LABEL } from './trip.js';
 import { CHANGELOG, APP_VERSION, compareVersions } from './changelog.js';
 
 /* global L */
@@ -211,6 +212,8 @@ async function renderList(params) {
   });
 
   const safetyDismissed = storageGet('safety-dismissed') === '1';
+  const active = await getActiveTrip();
+  const activeGoal = active?.goal ? getCategory(active.goal) : null;
 
   main.innerHTML = `
     ${safetyDismissed ? '' : `
@@ -223,6 +226,13 @@ async function renderList(params) {
       </ul>
       <button class="btn small" id="dismiss-safety">わかった</button>
     </div>`}
+
+    ${active ? `
+    <a class="card active-mini" href="#/go">
+      <span class="at-label">🚩 いまのおでかけ <span class="status ${active.status}">${STATUS_LABEL[active.status]}</span></span>
+      <b>${esc(active.name)}駅${active.status === 'arrived' ? 'を散策中' : 'へ向かう'}</b>
+      <span class="small">目的：${activeGoal ? `${activeGoal.icon} ${esc(activeGoal.name)}を探す` : '自由に歩く'}</span>
+    </a>` : ''}
 
     <section class="card stats">
       <div class="stat"><b>${s.total}</b><span>発見</span></div>
@@ -302,12 +312,14 @@ async function renderDetail(id) {
   const c = getCategory(it.category);
   const sources = (it.sources || []).filter((s) => s.title || s.url);
   const confidenceLabel = { guess: '推測', likely: 'ほぼ確実', sourced: '出典あり' }[it.confidence] || '未設定';
+  const trip = it.tripId ? (await db.getTrips()).find((t) => t.id === it.tripId) : null;
 
   main.innerHTML = `
     <article class="detail">
       ${it.photo ? `<img class="photo" src="${blobUrl(it.photo)}" alt="${esc(it.title)}">` : ''}
       <div class="card">
         <p class="meta"><a href="#/guide/${c.id}">${c.icon} ${esc(c.name)}</a> ・ ${esc(formatDate(it.foundAt))}</p>
+        ${trip ? `<p class="meta">🚩 ${esc(trip.name)}駅へのおでかけで発見</p>` : ''}
         <h2>${esc(it.title || '（無題の発見）')}</h2>
         ${feelingsHtml(it)}
         <p>${depthBadges(it)} <span class="xp">${xpOf(it)} XP</span> ・ 確信度：${esc(confidenceLabel)}</p>
@@ -356,6 +368,8 @@ async function renderForm(id, presetCategory = null) {
   }
   const beforeItems = await db.getAll();
   await updateHeader(beforeItems);
+  // 新しい記録は、いまのおでかけに紐づける（編集のときは元の紐づけを保つ）
+  const activeTrip = existing ? null : await getActiveTrip();
 
   const it = existing || {
     id: newId(),
@@ -393,6 +407,9 @@ async function renderForm(id, presetCategory = null) {
         </div>
         <p class="muted small">写真は縮小して保存され、撮影位置などのメタデータは削除されます。</p>
       </section>
+
+      ${activeTrip ? `
+      <label class="check trip-link"><input type="checkbox" name="linkTrip" checked> 🚩 ${esc(activeTrip.name)}駅へのおでかけの発見にする</label>` : ''}
 
       <section class="card">
         <h3>なにを見つけた？</h3>
@@ -601,6 +618,7 @@ async function renderForm(id, presetCategory = null) {
         .filter((s) => s.title || s.url),
       confidence: fd.get('confidence') || 'guess',
       feelings: fd.getAll('feelings').filter((f) => getFeeling(f)),
+      tripId: existing ? existing.tripId || null : activeTrip && fd.get('linkTrip') === 'on' ? activeTrip.id : null,
       photo: state.photo,
       thumb: state.thumb,
       createdAt: existing?.createdAt || now,
@@ -954,6 +972,7 @@ async function importData(e) {
           : [],
         confidence: ['guess', 'likely', 'sourced'].includes(raw.confidence) ? raw.confidence : 'guess',
         feelings: Array.isArray(raw.feelings) ? raw.feelings.filter((f) => typeof f === 'string' && getFeeling(f)) : [],
+        tripId: str(raw.tripId, 100) || null,
         photo: isDataImage(raw.photo) ? await dataURLToBlob(raw.photo) : null,
         thumb: isDataImage(raw.thumb) ? await dataURLToBlob(raw.thumb) : null,
         createdAt: str(raw.createdAt, 40) || new Date().toISOString(),
@@ -972,8 +991,12 @@ async function importData(e) {
         lng: Number.isFinite(t.lng) ? t.lng : null,
         lines: Array.isArray(t.lines) ? t.lines.slice(0, 20).map((l) => str(l, 100)) : [],
         theme: str(t.theme, 40),
+        goal: str(t.goal, 40) || null,
+        memo: str(t.memo, 200),
+        status: ['going', 'arrived', 'done'].includes(t.status) ? t.status : 'done',
         decidedAt: str(t.decidedAt, 40) || new Date().toISOString(),
         visitedAt: str(t.visitedAt, 40) || null,
+        endedAt: str(t.endedAt, 40) || null,
       });
       tripCount++;
     }
