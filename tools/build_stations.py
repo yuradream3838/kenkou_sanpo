@@ -55,6 +55,42 @@ LINE_RENAME = {
 }
 
 
+# 正式な路線名と、実際に列車が走る運転系統が違う路線の置き換え。
+# 例：正式な「東海道線」には京浜東北線の新子安・東神奈川や、横須賀線電車の武蔵小杉・東戸塚も含まれるため、
+#     利用者が思い浮かべる系統（東海道線・京浜東北線・横須賀線）に分ける。
+# {都道府県コード: {正式な路線ラベル: [(系統ラベル, [駅名…]), …]}}
+SERVICE_ROUTES = {
+    '14': {
+        'JR東日本 東海道線': [
+            ('JR東日本 東海道線', ['川崎', '横浜', '戸塚', '大船', '藤沢', '辻堂', '茅ヶ崎', '平塚', '大磯', '二宮',
+                                    '国府津', '鴨宮', '小田原', '早川', '根府川', '真鶴', '湯河原']),
+            ('JR東日本 京浜東北線', ['川崎', '鶴見', '新子安', '東神奈川', '横浜']),
+            ('JR東日本 横須賀線', ['武蔵小杉', '新川崎', '横浜', '保土ヶ谷', '東戸塚', '戸塚', '大船']),
+            ('JR東日本 相鉄・JR直通線', ['羽沢横浜国大']),
+        ],
+    },
+}
+
+
+def apply_service_routes(stations, pref_code):
+    rules = SERVICE_ROUTES.get(pref_code, {})
+    for official, routes in rules.items():
+        covered = {name for _, names in routes for name in names}
+        have = {s['n'] for s in stations if official in s['l']}
+        missing = have - covered
+        unknown = covered - {s['n'] for s in stations}
+        if missing or unknown:
+            raise SystemExit(f'SERVICE_ROUTES の駅が合いません: 未割当 {sorted(missing)} / 存在しない {sorted(unknown)}')
+        for s in stations:
+            if official not in s['l']:
+                continue
+            s['l'] = [l for l in s['l'] if l != official]
+            for label, names in routes:
+                if s['n'] in names and label not in s['l']:
+                    s['l'].append(label)
+            s['l'].sort()
+
+
 def line_label(operator, line):
     op = OPERATOR_SHORT.get(operator, operator)
     renamed = LINE_RENAME.get((op, line))
@@ -169,6 +205,7 @@ def main(station_path, boundary_path, pref_code, out_path):
         y = sum(p[1] for p in m['_pts']) / len(m['_pts'])
         out.append({'n': m['n'], 'lat': round(y, 5), 'lng': round(x, 5), 'l': sorted(m['l'])})
     out.sort(key=lambda s: (s['lat'], s['lng']))
+    apply_service_routes(out, pref_code)
 
     data = {
         'prefCode': pref_code,

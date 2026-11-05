@@ -289,3 +289,10 @@ body[data-route="new"] .fab, body[data-route="edit"] .fab { display: none; }
 .feel-grid a { display: flex; flex-direction: column; align-items: center; padding: 8px 2px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); text-decoration: none; font-size: 0.78rem; }
 .feel-grid a.has { color: var(--text); border-color: var(--warn-line); background: var(--warn-bg); }
 .feel-grid .icon { font-size: 1.4rem; }
+
+/* 路線でしぼる */
+.line-filter { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; margin: 4px 0 12px; }
+.line-filter summary { cursor: pointer; font-size: 0.9rem; padding: 4px 0; }
+.line-filter summary span { color: var(--accent); font-weight: 700; }
+.line-groups { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.line-groups small { color: inherit; opacity: 0.7; font-size: 0.7rem; }

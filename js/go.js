@@ -1,13 +1,13 @@
 // おでかけ：散策のスタート駅をランダムに決める。
 import * as db from './db.js';
 import { CATEGORIES } from './categories.js';
-import { loadStations, candidates, pickRandom, distanceKm } from './stations.js';
+import { loadStations, candidates, pickRandom, distanceKm, nearestStation, lineGroups } from './stations.js';
 import { createMap, categoryMarker } from './map.js';
 
 /* global L */
 
 const SETTINGS_KEY = 'go-settings';
-const DEFAULTS = { mode: 'near', baseType: 'current', baseStation: '', minKm: 2, maxKm: 10, excludeVisited: true, cooldown: 5 };
+const DEFAULTS = { mode: 'near', baseType: 'current', baseStation: '', minKm: 2, maxKm: 10, excludeVisited: true, cooldown: 5, lines: [], noTransfer: false };
 const RECENT_KEY = 'go-recent'; // 抽選で出た駅名（新しい順）
 const COOLDOWN_OPTIONS = [0, 1, 3, 5, 10, 20, 30, 50];
 const RECENT_MAX = 50;
@@ -92,6 +92,9 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
   const stations = data.stations;
   const byName = new Map(stations.map((s) => [s.n, s]));
   const settings = loadSettings();
+  const groups = lineGroups(stations);
+  const allLines = new Set(groups.flatMap((g) => g.lines.map((l) => l.label)));
+  settings.lines = (Array.isArray(settings.lines) ? settings.lines : []).filter((l) => allLines.has(l));
   let resultMap = null;
 
   main.innerHTML = `
@@ -125,7 +128,24 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
           </label>
         </div>
         <p class="muted small">距離は直線距離です。最短を設定すると、近すぎる駅（いつもの駅）を除けます。</p>
+        <label class="check"><input type="checkbox" name="noTransfer" ${settings.noTransfer ? 'checked' : ''}> 乗り換えなしで行ける駅だけ（基準の駅と同じ路線）</label>
+        <p class="muted small" id="no-transfer-note"></p>
       </div>
+
+      <details class="line-filter" ${settings.lines.length ? 'open' : ''}>
+        <summary>🚃 路線でしぼる：<span id="line-summary"></span></summary>
+        <div class="line-groups">
+          ${groups.map((g) => `
+            <p class="cat-group">${esc(g.op)}</p>
+            ${g.lines.map((l) => `
+              <label class="cat-chip">
+                <input type="checkbox" name="lines" value="${esc(l.label)}" ${settings.lines.includes(l.label) ? 'checked' : ''}>
+                <span>${esc(l.name)} <small>${l.count}駅</small></span>
+              </label>`).join('')}`).join('')}
+        </div>
+        <p class="muted small">JR は実際の列車の系統で分けています（例：東海道線は東海道線の列車が止まる駅だけ。新子安・東神奈川は京浜東北線）。湘南新宿ラインは東海道線・横須賀線と同じ線路を走るため、別の路線としては分けていません。</p>
+        <button type="button" class="btn ghost small" id="lines-clear">選択を解除</button>
+      </details>
 
       <label class="check"><input type="checkbox" name="excludeVisited" ${settings.excludeVisited ? 'checked' : ''}> 行ったことのある駅を除く</label>
 
@@ -161,6 +181,8 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
       maxKm: Number(fd.get('maxKm')),
       excludeVisited: fd.get('excludeVisited') === 'on',
       cooldown: Number(fd.get('cooldown')) || 0,
+      lines: fd.getAll('lines'),
+      noTransfer: fd.get('noTransfer') === 'on',
     };
   }
 
@@ -168,6 +190,17 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
     const s = readForm();
     document.getElementById('near-options').hidden = s.mode !== 'near';
     document.getElementById('base-station-wrap').hidden = s.baseType !== 'station';
+    document.getElementById('line-summary').textContent = s.lines.length
+      ? s.lines.map((l) => l.replace(/^\S+ /, '')).join('・')
+      : 'すべての路線';
+    const base = byName.get(s.baseStation);
+    document.getElementById('no-transfer-note').textContent = !s.noTransfer
+      ? ''
+      : s.baseType === 'station'
+        ? base
+          ? `${base.n}駅の路線：${base.l.map((l) => l.replace(/^\S+ /, '')).join('・')}`
+          : ''
+        : '現在地の最寄り駅を基準にします。';
   }
   function renderRecentInfo() {
     const s = readForm();
@@ -185,6 +218,12 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
     toast('抽選履歴をリセットしました');
   });
   renderRecentInfo();
+
+  document.getElementById('lines-clear').addEventListener('click', () => {
+    form.querySelectorAll('input[name=lines]').forEach((el) => (el.checked = false));
+    syncVisibility();
+    saveSettings(readForm());
+  });
 
   form.addEventListener('change', () => {
     renderRecentInfo();
@@ -276,13 +315,29 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
       }
     }
 
+    // 乗り換えなし：基準の駅（現在地なら最寄り駅）の路線に限る
+    let sameLineAs = [];
+    let transferNote = '';
+    if (s.mode === 'near' && s.noTransfer) {
+      const from = s.baseType === 'station' ? byName.get(s.baseStation) : nearestStation(stations, base);
+      if (from) {
+        sameLineAs = from.l;
+        transferNote = `${from.n}駅から乗り換えなし`;
+        if (s.baseType !== 'station') baseLabel = `現在地（最寄り：${from.n}駅）から`;
+      }
+    }
+
     const exclude = s.excludeVisited ? new Set(visited) : new Set();
     if (s.mode === 'near' && s.baseType === 'station') exclude.add(s.baseStation);
-    const list = candidates(stations, s.mode === 'near' ? { base, minKm: s.minKm, maxKm: s.maxKm, exclude } : { exclude });
+    const lines = new Set(s.lines);
+    const list = candidates(
+      stations,
+      s.mode === 'near' ? { base, minKm: s.minKm, maxKm: s.maxKm, exclude, lines, sameLineAs } : { exclude, lines }
+    );
 
     if (!list.length) {
       resultEl.innerHTML = `<div class="card"><p>条件に合う駅がありません。</p>
-        <p class="muted small">${s.mode === 'near' ? '距離の範囲を広げるか、' : ''}「行ったことのある駅を除く」を外してみてください。${
+        <p class="muted small">${s.mode === 'near' ? '距離の範囲を広げるか、' : ''}${lines.size || sameLineAs.length ? '路線の条件をゆるめるか、' : ''}「行ったことのある駅を除く」を外してみてください。${
           s.mode === 'near' && s.baseType === 'current' ? '（神奈川県の駅から選んでいます。県外にいる場合は「駅を指定」が便利です）' : ''
         }</p></div>`;
       return;
@@ -311,10 +366,13 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
     const choice = pickRandom(pool);
     pushRecent(choice.n);
     renderRecentInfo();
-    await showResult(choice, { count: pool.length, baseLabel, base, cooldownNote });
+    const filterNote = [transferNote, lines.size ? `路線：${s.lines.map((l) => l.replace(/^\S+ /, '')).join('・')}` : '']
+      .filter(Boolean)
+      .join(' ／ ');
+    await showResult(choice, { count: pool.length, baseLabel, base, cooldownNote, filterNote });
   }
 
-  async function showResult(st, { count, baseLabel, base, cooldownNote = '' }) {
+  async function showResult(st, { count, baseLabel, base, cooldownNote = '', filterNote = '' }) {
     if (resultMap) {
       resultMap.stop();
       resultMap.remove();
@@ -339,7 +397,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
 
     resultEl.innerHTML = `
       <div class="card go-result">
-        <p class="muted small">候補 ${count} 駅から選びました${cooldownNote ? `<br>${esc(cooldownNote)}` : ''}</p>
+        <p class="muted small">${filterNote ? `${esc(filterNote)}<br>` : ''}候補 ${count} 駅から選びました${cooldownNote ? `<br>${esc(cooldownNote)}` : ''}</p>
         <p class="station-name">${esc(st.n)}<small>駅</small></p>
         <ul class="lines">${st.l.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
         ${st.km !== null ? `<p>${esc(baseLabel)} 直線で約 <b>${st.km.toFixed(1)} km</b></p>` : ''}

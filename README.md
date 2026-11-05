@@ -23,6 +23,7 @@
 - おでかけ：散策のスタート駅をランダムに決める（神奈川県 347 駅）
   - 「距離で選ぶ」：現在地または指定した駅から、最短〜最長 km の範囲で抽選
   - 「県内どこでも」：県内の全駅から抽選
+  - 路線でしぼる（複数選択可）、乗り換えなしで行ける駅だけ（基準の駅／現在地の最寄り駅と同じ路線）
   - 一度出た駅を、その後 N 回の抽選で出さない設定（なし / 1〜50 回）
   - 行った駅を除外、今日のお題（図鑑の未登録カテゴリ）、駅コレクション（行った駅 / 全駅）
 - データの書き出し / 読み込み（JSON、写真・おでかけ履歴込み）
@@ -70,6 +71,7 @@ python3 -I tools/build_stations.py N02-24_Station.geojson japan.geojson 14 data/
 
 - `N02-24_Station.geojson`：[国土数値情報 鉄道データ](https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-2024.html) の駅データ
 - `japan.geojson`：都道府県境界（[dataofjapan/land](https://github.com/dataofjapan/land)、地球地図日本ベース）。県内判定にのみ使用し、リポジトリには含めない
+- JR の正式路線名（例：東海道線）は実際の列車の系統（東海道線・京浜東北線・横須賀線…）に分けている（スクリプト内の `SERVICE_ROUTES`）
 - 境界付近で判定がずれる駅は、スクリプト内の `OVERRIDES` で補正する（出力に境界付近の駅一覧が出るので確認に使う）
 - 他県を追加したら `js/stations.js` の `PREFECTURES` に登録する
 
