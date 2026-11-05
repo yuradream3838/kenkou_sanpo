@@ -1,7 +1,7 @@
 // 地図は国土地理院の地図タイル（出典表示が必要）を使用する。
 /* global L */
 const GSI_ATTRIBUTION =
-  '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>';
+  '<a href="https://maps.gsi.go.jp/development/ichiran.html" rel="noopener">国土地理院</a>';
 
 // 初期表示は神奈川県のおおよその中心
 export const DEFAULT_CENTER = [35.4478, 139.6425];

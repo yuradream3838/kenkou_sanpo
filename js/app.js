@@ -370,7 +370,7 @@ async function renderDetail(id) {
       ${sources.length ? `<section class="card"><h3>出典</h3><ul class="sources">${sources.map((s) => {
         const url = safeUrl(s.url);
         const label = esc(s.title || s.url);
-        return `<li>${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${label}</a>` : label}</li>`;
+        return `<li>${url ? `<a href="${esc(url)}" rel="noopener noreferrer">${label}</a>` : label}</li>`;
       }).join('')}</ul></section>` : ''}
 
       ${it.location ? `<section class="card"><h3>場所</h3><div class="minimap" id="detail-map"></div>
@@ -963,7 +963,7 @@ async function renderSettings() {
     <section class="card">
       <h3>このアプリについて</h3>
       <p>発見ノート v${APP_VERSION}</p>
-      <p class="small">地図：<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a> ・ 地図ライブラリ：<a href="https://leafletjs.com/" target="_blank" rel="noopener">Leaflet</a></p>
+      <p class="small">地図：<a href="https://maps.gsi.go.jp/development/ichiran.html" rel="noopener">国土地理院</a> ・ 地図ライブラリ：<a href="https://leafletjs.com/" rel="noopener">Leaflet</a></p>
       <p><a href="privacy.html">プライバシーポリシー・利用上の注意</a></p>
     </section>
     <section class="card">

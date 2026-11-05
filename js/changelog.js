@@ -2,6 +2,13 @@
 // 先頭の version がアプリのバージョン（APP_VERSION）になる。sw.js の VERSION も合わせて上げること。
 export const CHANGELOG = [
   {
+    version: '0.12.2',
+    date: '2026-11-05',
+    items: [
+      'リンク（行き方を調べる・出典など）を開くたびに新しいタブが増えないよう、同じ画面で開くようにしました。戻るボタンでアプリに戻れます。',
+    ],
+  },
+  {
     version: '0.12.1',
     date: '2026-11-05',
     items: [

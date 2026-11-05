@@ -169,7 +169,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
       <ul class="trips" id="trips"></ul>
     </section>
 
-    <p class="muted small">駅データ：${esc(data.source)}（<a href="${esc(data.sourceUrl)}" target="_blank" rel="noopener">出典</a>）</p>`;
+    <p class="muted small">駅データ：${esc(data.source)}（<a href="${esc(data.sourceUrl)}" rel="noopener">出典</a>）</p>`;
 
   const form = document.getElementById('go-form');
   const resultEl = document.getElementById('go-result');
@@ -245,8 +245,8 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
 
   const directionsButtons = (t) => {
     const u = directionsUrls(t);
-    return `<a class="btn" href="${u.google}" target="_blank" rel="noopener noreferrer">🗺 行き方を調べる</a>
-      ${isIOS() ? `<a class="btn ghost small" href="${u.apple}" target="_blank" rel="noopener noreferrer">Appleマップで開く</a>` : ''}`;
+    return `<a class="btn" href="${u.google}" rel="noopener noreferrer">🗺 行き方を調べる</a>
+      ${isIOS() ? `<a class="btn ghost small" href="${u.apple}" rel="noopener noreferrer">Appleマップで開く</a>` : ''}`;
   };
 
   const TL_ICON = { start: '🚶', note: '💬', find: '🔍', end: '🏠' };
