@@ -54,6 +54,15 @@ const PHOTO_FILE_ACCEPT = [
   'application/octet-stream',
 ].join(',');
 
+const MAX_PHOTOS = 10;
+
+// 発見の写真一覧。photos がなければ以前の 1 枚だけの形式（photo/thumb）を使う。
+// photo/thumb は常に表紙（1 枚目）と同じにしておく（一覧・地図・古い書き出しとの互換のため）。
+function photosOf(it) {
+  if (Array.isArray(it.photos) && it.photos.length) return it.photos;
+  return it.photo ? [{ id: 'p0', photo: it.photo, thumb: it.thumb || it.photo }] : [];
+}
+
 function isImageFile(file) {
   return (file.type || '').startsWith('image/') || /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(file.name || '');
 }
@@ -281,7 +290,7 @@ async function renderList(params) {
         const c = getCategory(it.category);
         return `<li>
           <a class="item" href="#/view/${encodeURIComponent(it.id)}">
-            ${it.thumb ? `<img src="${blobUrl(it.thumb)}" alt="" loading="lazy">` : `<span class="noimg" style="background:${c.color}">${c.icon}</span>`}
+            <span class="thumbwrap">${it.thumb ? `<img src="${blobUrl(it.thumb)}" alt="" loading="lazy">` : `<span class="noimg" style="background:${c.color}">${c.icon}</span>`}${photosOf(it).length > 1 ? `<span class="photo-count">📷${photosOf(it).length}</span>` : ''}</span>
             <span class="body">
               <span class="name">${esc(it.title || '（無題の発見）')}</span>
               <span class="meta">${c.icon} ${esc(c.name)} ・ ${esc(formatDate(it.foundAt).split(' ')[0])}</span>
@@ -330,7 +339,13 @@ async function renderDetail(id) {
 
   main.innerHTML = `
     <article class="detail">
-      ${it.photo ? `<img class="photo" src="${blobUrl(it.photo)}" alt="${esc(it.title)}">` : ''}
+      ${(() => {
+        const ps = photosOf(it);
+        if (!ps.length) return '';
+        if (ps.length === 1) return `<img class="photo" src="${blobUrl(ps[0].photo)}" alt="${esc(it.title)}">`;
+        return `<div class="gallery" id="gallery">${ps.map((ph, i) => `<img class="photo" src="${blobUrl(ph.photo)}" alt="${esc(it.title)}（${i + 1}/${ps.length}）" loading="lazy">`).join('')}</div>
+          <p class="gallery-count" id="gallery-count">1 / ${ps.length} <span class="muted small">（横にスワイプ）</span></p>`;
+      })()}
       <div class="card">
         <p class="meta"><a href="#/guide/${c.id}">${c.icon} ${esc(c.name)}</a> ・ ${esc(formatDate(it.foundAt))}</p>
         ${trip ? `<p class="meta">🚩 ${esc(trip.name)}駅へのおでかけで発見</p>` : ''}
@@ -357,6 +372,15 @@ async function renderDetail(id) {
         <button class="btn danger" id="delete">削除</button>
       </div>
     </article>`;
+
+  const gallery = document.getElementById('gallery');
+  if (gallery) {
+    const total = gallery.children.length;
+    gallery.addEventListener('scroll', () => {
+      const i = Math.round(gallery.scrollLeft / gallery.clientWidth) + 1;
+      document.getElementById('gallery-count').innerHTML = `${Math.min(i, total)} / ${total} <span class="muted small">（横にスワイプ）</span>`;
+    }, { passive: true });
+  }
 
   if (it.location) {
     const m = createMap(document.getElementById('detail-map'), { center: [it.location.lat, it.location.lng], zoom: 16 });
@@ -400,8 +424,7 @@ async function renderForm(id, presetCategory = null) {
     thumb: null,
   };
   const state = {
-    photo: it.photo,
-    thumb: it.thumb,
+    photos: photosOf(it).map((ph) => ({ ...ph })),
     location: it.location,
     sources: it.sources && it.sources.length ? it.sources.map((s) => ({ ...s })) : [{ title: '', url: '' }],
   };
@@ -416,10 +439,9 @@ async function renderForm(id, presetCategory = null) {
         <div id="photo-preview" class="photo-preview"></div>
         <div class="row">
           <label class="btn">📷 撮影<input type="file" accept="image/*" capture="environment" id="photo-camera" hidden></label>
-          <label class="btn">📁 ファイルから選択<input type="file" accept="${PHOTO_FILE_ACCEPT}" id="photo-file" hidden></label>
-          <button type="button" class="btn ghost" id="photo-remove">写真を外す</button>
+          <label class="btn">📁 ファイルから選択<input type="file" accept="${PHOTO_FILE_ACCEPT}" id="photo-file" multiple hidden></label>
         </div>
-        <p class="muted small">写真は縮小して保存され、撮影位置などのメタデータは削除されます。</p>
+        <p class="muted small">1つの発見に ${MAX_PHOTOS} 枚まで。ファイルからはまとめて選べます。1枚目が表紙になります。<br>写真は縮小して保存され、撮影位置などのメタデータは削除されます。</p>
       </section>
 
       ${activeTrip ? `
@@ -497,31 +519,63 @@ async function renderForm(id, presetCategory = null) {
   leaveGuard = () => !formDirty || confirm('入力中の内容は保存されていません。移動しますか？');
 
   // 写真
-  function renderPreview() {
-    preview.innerHTML = state.photo ? `<img src="${blobUrl(state.photo)}" alt="プレビュー">` : '<p class="muted">写真なし</p>';
-    document.getElementById('photo-remove').hidden = !state.photo;
+  function renderPreview(status = '') {
+    preview.innerHTML = state.photos.length
+      ? `<ul class="photo-grid">${state.photos
+          .map(
+            (ph, i) => `<li>
+              <img src="${blobUrl(ph.thumb || ph.photo)}" alt="写真 ${i + 1}">
+              ${i === 0 ? '<span class="cover-label">表紙</span>' : `<button type="button" class="ph-btn ph-cover" data-cover="${i}" aria-label="写真 ${i + 1} を表紙にする">★表紙に</button>`}
+              <button type="button" class="ph-btn ph-del" data-del="${i}" aria-label="写真 ${i + 1} を外す">✕</button>
+            </li>`
+          )
+          .join('')}</ul>`
+      : '<p class="muted">写真なし</p>';
+    if (status) preview.insertAdjacentHTML('beforeend', `<p class="muted small">${esc(status)}</p>`);
   }
+  preview.addEventListener('click', (e) => {
+    const del = e.target.closest('[data-del]');
+    const cover = e.target.closest('[data-cover]');
+    if (del) {
+      state.photos.splice(Number(del.dataset.del), 1);
+    } else if (cover) {
+      const [ph] = state.photos.splice(Number(cover.dataset.cover), 1);
+      state.photos.unshift(ph);
+    } else return;
+    formDirty = true;
+    renderPreview();
+  });
   async function onPhoto(e) {
-    const file = e.target.files[0];
+    const files = [...e.target.files];
     e.target.value = '';
-    if (!file) return;
-    if (!isImageFile(file)) {
-      toast('画像ファイル（JPEG・PNG など）を選んでください', 3500);
-      return;
+    if (!files.length) return;
+    const images = files.filter(isImageFile);
+    if (images.length < files.length) toast('画像以外のファイルは追加しませんでした', 3500);
+    const room = MAX_PHOTOS - state.photos.length;
+    if (room <= 0) return toast(`写真は ${MAX_PHOTOS} 枚までです`);
+    if (images.length > room) toast(`写真は ${MAX_PHOTOS} 枚までなので、${room} 枚だけ追加します`, 3500);
+    const todo = images.slice(0, room);
+    let failed = 0;
+    for (let i = 0; i < todo.length; i++) {
+      renderPreview(`写真を処理中… ${i + 1} / ${todo.length}`);
+      try {
+        const exif = await readExif(todo[i]); // 保存時にメタデータを消す前に、撮影日時・場所を読む
+        const { photo, thumb } = await processPhoto(todo[i]);
+        state.photos.push({ id: newId(), photo, thumb });
+        formDirty = true;
+        if (!exifTakenAt && !exifApplied && (exif.takenAt || exif.location)) {
+          exifApplied = true; // 撮影日時・場所は、情報のある最初の写真から使う
+          applyExif(exif);
+        }
+      } catch (err) {
+        failed++;
+        if (todo.length === 1) toast(err.message, 5000);
+      }
     }
-    preview.innerHTML = '<p class="muted">処理中…</p>';
-    try {
-      const exif = await readExif(file); // 保存時にメタデータを消す前に、撮影日時・場所を読む
-      const { photo, thumb } = await processPhoto(file);
-      state.photo = photo;
-      state.thumb = thumb;
-      formDirty = true;
-      applyExif(exif);
-    } catch (err) {
-      toast(err.message);
-    }
+    if (failed && todo.length > 1) toast(`${failed} 枚は読み込めませんでした（HEIC 形式などは端末によって読み込めないことがあります）`, 5000);
     renderPreview();
   }
+  let exifApplied = false;
 
   // 写真の撮影日時・撮影場所を、発見の日時・場所として使えるようにする
   const foundAtInput = form.querySelector('input[name=foundAt]');
@@ -566,12 +620,6 @@ async function renderForm(id, presetCategory = null) {
   }
   document.getElementById('photo-camera').addEventListener('change', onPhoto);
   document.getElementById('photo-file').addEventListener('change', onPhoto);
-  document.getElementById('photo-remove').addEventListener('click', () => {
-    state.photo = null;
-    state.thumb = null;
-    formDirty = true;
-    renderPreview();
-  });
   renderPreview();
 
   // 場所
@@ -625,7 +673,7 @@ async function renderForm(id, presetCategory = null) {
     setLocation(null);
     formDirty = true;
   });
-  setTimeout(() => fmap.invalidateSize(), 50);
+  setTimeout(() => maps.includes(fmap) && fmap.invalidateSize(), 50); // 画面を移った後は何もしない
 
   // 出典
   function renderSources() {
@@ -683,8 +731,9 @@ async function renderForm(id, presetCategory = null) {
       confidence: fd.get('confidence') || 'guess',
       feelings: fd.getAll('feelings').filter((f) => getFeeling(f)),
       tripId: existing ? existing.tripId || null : activeTrip && fd.get('linkTrip') === 'on' ? activeTrip.id : null,
-      photo: state.photo,
-      thumb: state.thumb,
+      photos: state.photos,
+      photo: state.photos[0]?.photo || null,
+      thumb: state.photos[0]?.thumb || null,
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     };
@@ -767,7 +816,7 @@ async function renderMap(params) {
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
     );
   });
-  setTimeout(() => map.invalidateSize(), 50);
+  setTimeout(() => maps.includes(map) && map.invalidateSize(), 50); // 画面を移った後は何もしない
 }
 
 // ---------- 図鑑 ----------
@@ -985,14 +1034,15 @@ function showUpdateBanner() {
 async function exportData(items) {
   const out = [];
   for (const it of items) {
-    out.push({
-      ...it,
-      photo: it.photo ? await blobToDataURL(it.photo) : null,
-      thumb: it.thumb ? await blobToDataURL(it.thumb) : null,
-    });
+    const photos = [];
+    for (const ph of photosOf(it)) {
+      photos.push({ id: ph.id, photo: await blobToDataURL(ph.photo), thumb: ph.thumb ? await blobToDataURL(ph.thumb) : null });
+    }
+    // 表紙は photos[0] と同じなので photo/thumb は書き出さない（ファイルを小さくするため）
+    out.push({ ...it, photos, photo: null, thumb: null });
   }
   const trips = await db.getTrips();
-  const json = JSON.stringify({ format: EXPORT_FORMAT, version: 2, exportedAt: new Date().toISOString(), items: out, trips });
+  const json = JSON.stringify({ format: EXPORT_FORMAT, version: 3, exportedAt: new Date().toISOString(), items: out, trips });
   const blob = new Blob([json], { type: 'application/json' });
   const a = document.createElement('a');
   const d = new Date();
@@ -1007,6 +1057,22 @@ async function exportData(items) {
 
 const isDataImage = (v) => typeof v === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(v);
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
+
+// 書き出しファイルの写真を読み込む（新形式 photos[]／旧形式 photo・thumb の両方に対応）
+async function importPhotos(raw) {
+  const out = [];
+  if (Array.isArray(raw.photos) && raw.photos.length) {
+    for (const ph of raw.photos.slice(0, MAX_PHOTOS)) {
+      if (!ph || !isDataImage(ph.photo)) continue;
+      const photo = await dataURLToBlob(ph.photo);
+      out.push({ id: str(ph.id, 100) || newId(), photo, thumb: isDataImage(ph.thumb) ? await dataURLToBlob(ph.thumb) : photo });
+    }
+  } else if (isDataImage(raw.photo)) {
+    const photo = await dataURLToBlob(raw.photo);
+    out.push({ id: 'p0', photo, thumb: isDataImage(raw.thumb) ? await dataURLToBlob(raw.thumb) : photo });
+  }
+  return out;
+}
 
 async function importData(e) {
   const file = e.target.files[0];
@@ -1037,11 +1103,12 @@ async function importData(e) {
         confidence: ['guess', 'likely', 'sourced'].includes(raw.confidence) ? raw.confidence : 'guess',
         feelings: Array.isArray(raw.feelings) ? raw.feelings.filter((f) => typeof f === 'string' && getFeeling(f)) : [],
         tripId: str(raw.tripId, 100) || null,
-        photo: isDataImage(raw.photo) ? await dataURLToBlob(raw.photo) : null,
-        thumb: isDataImage(raw.thumb) ? await dataURLToBlob(raw.thumb) : null,
+        photos: await importPhotos(raw),
         createdAt: str(raw.createdAt, 40) || new Date().toISOString(),
         updatedAt: str(raw.updatedAt, 40) || new Date().toISOString(),
       };
+      item.photo = item.photos[0]?.photo || null;
+      item.thumb = item.photos[0]?.thumb || null;
       await db.put(item);
       count++;
     }
