@@ -44,6 +44,19 @@ function safeUrl(url) {
   }
 }
 
+// 「ファイルから選択」で開く種類。image/* だけだと Android ではフォト（ギャラリー）が開くため、
+// 画像の種類を個別に並べ、application/octet-stream も加えてファイル（ストレージ）の画面が開くようにする。
+// 画像以外が選ばれた場合は isImageFile で弾く。
+const PHOTO_FILE_ACCEPT = [
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif',
+  '.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif',
+  'application/octet-stream',
+].join(',');
+
+function isImageFile(file) {
+  return (file.type || '').startsWith('image/') || /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(file.name || '');
+}
+
 function newId() {
   if (crypto.randomUUID) return crypto.randomUUID();
   return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
@@ -402,7 +415,7 @@ async function renderForm(id, presetCategory = null) {
         <div id="photo-preview" class="photo-preview"></div>
         <div class="row">
           <label class="btn">📷 撮影<input type="file" accept="image/*" capture="environment" id="photo-camera" hidden></label>
-          <label class="btn">🖼 選択<input type="file" accept="image/*" id="photo-file" hidden></label>
+          <label class="btn">📁 ファイルから選択<input type="file" accept="${PHOTO_FILE_ACCEPT}" id="photo-file" hidden></label>
           <button type="button" class="btn ghost" id="photo-remove">写真を外す</button>
         </div>
         <p class="muted small">写真は縮小して保存され、撮影位置などのメタデータは削除されます。</p>
@@ -489,6 +502,10 @@ async function renderForm(id, presetCategory = null) {
     const file = e.target.files[0];
     e.target.value = '';
     if (!file) return;
+    if (!isImageFile(file)) {
+      toast('画像ファイル（JPEG・PNG など）を選んでください', 3500);
+      return;
+    }
     preview.innerHTML = '<p class="muted">処理中…</p>';
     try {
       const { photo, thumb } = await processPhoto(file);

@@ -9,7 +9,7 @@ function loadImage(file) {
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error('画像を読み込めませんでした'));
+      reject(new Error('この画像は読み込めませんでした。HEIC 形式などは端末によって読み込めないことがあります。JPEG の写真を選んでください'));
     };
     img.src = url;
   });
