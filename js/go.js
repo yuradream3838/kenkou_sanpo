@@ -343,7 +343,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
         <p class="station-name">${esc(st.n)}<small>駅</small></p>
         <ul class="lines">${st.l.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
         ${st.km !== null ? `<p>${esc(baseLabel)} 直線で約 <b>${st.km.toFixed(1)} km</b></p>` : ''}
-        <p class="hint">今日のお題：駅の周りで<b>「${theme.icon} ${esc(theme.name)}」</b>を探してみよう${isNew ? '（図鑑に未登録！）' : ''}<br><span class="small">${esc(theme.hint)}</span></p>
+        <p class="hint">今日のお題：駅の周りで<b>「${theme.icon} ${esc(theme.name)}」</b>を探してみよう${isNew ? '（図鑑に未登録！）' : ''}<br><span class="small">${esc(theme.hint)} <a href="#/guide/${theme.id}">探し方を見る</a></span></p>
         <div class="minimap" id="go-map"></div>
         <p class="muted small">${nearby ? `この駅の周り（${NEARBY_KM}km）には、あなたの発見が ${nearby} 件あります。` : 'この駅の周りでの発見はまだありません。'}</p>
         <div class="row go-actions">

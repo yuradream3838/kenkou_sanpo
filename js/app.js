@@ -1,8 +1,8 @@
 import * as db from './db.js';
-import { CATEGORIES, getCategory } from './categories.js';
+import { CATEGORIES, GROUPS, DIFFICULTY, FEELINGS, getCategory, getFeeling, categoriesInGroup } from './categories.js';
 import { DEPTHS, depthOf, xpOf, summarize, FIRST_IN_CATEGORY_BONUS } from './progress.js';
 import { processPhoto, blobToDataURL, dataURLToBlob } from './image.js';
-import { createMap, categoryMarker } from './map.js';
+import { createMap, categoryMarker, LAYERS, layerName } from './map.js';
 import { renderGo } from './go.js';
 import { CHANGELOG, APP_VERSION, compareVersions } from './changelog.js';
 
@@ -115,6 +115,11 @@ function depthBadges(item) {
   ).join('')}</span>`;
 }
 
+function feelingsHtml(item, cls = 'feelings') {
+  const fs = (item.feelings || []).map(getFeeling).filter(Boolean);
+  return fs.length ? `<span class="${cls}">${fs.map((f) => `<span class="feel">${f.icon} ${esc(f.name)}</span>`).join('')}</span>` : '';
+}
+
 function nextStepHint(item) {
   const reached = new Set(depthOf(item));
   const next = DEPTHS.find((d) => !reached.has(d.key));
@@ -160,17 +165,19 @@ async function router() {
   try {
     switch (route.name) {
       case 'map':
-        return await renderMap();
+        return await renderMap(route.params);
       case 'zukan':
         return await renderZukan();
       case 'new':
-        return await renderForm(null);
+        return await renderForm(null, route.params.get('cat'));
       case 'edit':
         return await renderForm(route.id);
       case 'view':
         return await renderDetail(route.id);
       case 'go':
         return await renderGo({ main, esc, toast, addMap: (m) => maps.push(m), updateHeader });
+      case 'guide':
+        return await renderGuide(route.id);
       case 'changelog':
         return await renderChangelog();
       case 'settings':
@@ -190,10 +197,12 @@ async function renderList(params) {
   const items = await db.getAll();
   const s = await updateHeader(items);
   const cat = params.get('cat') || '';
+  const feel = params.get('feel') || '';
   const q = (params.get('q') || '').trim();
 
   const filtered = items.filter((it) => {
     if (cat && it.category !== cat) return false;
+    if (feel && !(it.feelings || []).includes(feel)) return false;
     if (q) {
       const text = [it.title, it.noticed, it.hypothesis, it.findings].join(' ');
       if (!text.includes(q)) return false;
@@ -219,14 +228,18 @@ async function renderList(params) {
       <div class="stat"><b>${s.total}</b><span>発見</span></div>
       <div class="stat"><b>${s.days}</b><span>探索日数</span></div>
       <div class="stat"><b>${s.verified}</b><span>裏付け済み</span></div>
-      <div class="stat"><b>${s.discoveredCats}/${CATEGORIES.length}</b><span>図鑑</span></div>
+      <div class="stat"><b>${s.discoveredCats}</b><span>図鑑の種類</span></div>
     </section>
     <p class="xp-line">Lv.${s.level}「${esc(s.title)}」 ${s.xp} XP ・ 次のレベルまで ${s.next - s.xp} XP</p>
 
     <form class="filters" id="filters">
       <select name="cat" aria-label="カテゴリで絞り込み">
-        <option value="">すべてのカテゴリ</option>
-        ${CATEGORIES.map((c) => `<option value="${c.id}" ${c.id === cat ? 'selected' : ''}>${c.icon} ${esc(c.name)}</option>`).join('')}
+        <option value="">すべての種類</option>
+        ${GROUPS.map((g) => `<optgroup label="${esc(g.name)}">${categoriesInGroup(g.id).map((c) => `<option value="${c.id}" ${c.id === cat ? 'selected' : ''}>${c.icon} ${esc(c.name)}</option>`).join('')}</optgroup>`).join('')}
+      </select>
+      <select name="feel" aria-label="気持ちで絞り込み">
+        <option value="">すべての気持ち</option>
+        ${FEELINGS.map((f) => `<option value="${f.id}" ${f.id === feel ? 'selected' : ''}>${f.icon} ${esc(f.name)}</option>`).join('')}
       </select>
       <input type="search" name="q" placeholder="キーワード" value="${esc(q)}" aria-label="キーワード検索">
     </form>
@@ -248,7 +261,7 @@ async function renderList(params) {
             <span class="body">
               <span class="name">${esc(it.title || '（無題の発見）')}</span>
               <span class="meta">${c.icon} ${esc(c.name)} ・ ${esc(formatDate(it.foundAt).split(' ')[0])}</span>
-              <span class="meta">${depthBadges(it)} <span class="xp">${xpOf(it)} XP</span></span>
+              <span class="meta">${depthBadges(it)} <span class="xp">${xpOf(it)} XP</span> ${feelingsHtml(it, 'feelings mini')}</span>
             </span>
           </a>
         </li>`;
@@ -260,11 +273,13 @@ async function renderList(params) {
     const fd = new FormData(form);
     const p = new URLSearchParams();
     if (fd.get('cat')) p.set('cat', fd.get('cat'));
+    if (fd.get('feel')) p.set('feel', fd.get('feel'));
     if (String(fd.get('q')).trim()) p.set('q', String(fd.get('q')).trim());
     const qs = p.toString();
     location.hash = '#/list' + (qs ? '?' + qs : '');
   };
   form.cat.addEventListener('change', apply);
+  form.feel.addEventListener('change', apply);
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     apply();
@@ -292,8 +307,9 @@ async function renderDetail(id) {
     <article class="detail">
       ${it.photo ? `<img class="photo" src="${blobUrl(it.photo)}" alt="${esc(it.title)}">` : ''}
       <div class="card">
-        <p class="meta">${c.icon} ${esc(c.name)} ・ ${esc(formatDate(it.foundAt))}</p>
+        <p class="meta"><a href="#/guide/${c.id}">${c.icon} ${esc(c.name)}</a> ・ ${esc(formatDate(it.foundAt))}</p>
         <h2>${esc(it.title || '（無題の発見）')}</h2>
+        ${feelingsHtml(it)}
         <p>${depthBadges(it)} <span class="xp">${xpOf(it)} XP</span> ・ 確信度：${esc(confidenceLabel)}</p>
         ${nextStepHint(it)}
       </div>
@@ -332,7 +348,7 @@ async function renderDetail(id) {
 
 // ---------- 記録フォーム ----------
 
-async function renderForm(id) {
+async function renderForm(id, presetCategory = null) {
   const existing = id ? await db.get(id) : null;
   if (id && !existing) {
     main.innerHTML = `<div class="card">この発見は見つかりませんでした。</div>`;
@@ -344,7 +360,7 @@ async function renderForm(id) {
   const it = existing || {
     id: newId(),
     title: '',
-    category: '',
+    category: CATEGORIES.some((c) => c.id === presetCategory) ? presetCategory : '',
     foundAt: toLocalInput(new Date()),
     location: null,
     noticed: '',
@@ -382,11 +398,21 @@ async function renderForm(id) {
         <h3>なにを見つけた？</h3>
         <label>名前（仮でOK）<input name="title" maxlength="80" value="${esc(it.title)}" placeholder="例：坂の途中の小さな石柱"></label>
         <fieldset class="cats">
-          <legend>カテゴリ</legend>
-          ${CATEGORIES.map((c) => `
+          <legend>種類</legend>
+          ${GROUPS.map((g) => `
+            <p class="cat-group">${esc(g.name)}</p>
+            ${categoriesInGroup(g.id).map((c) => `
             <label class="cat-chip">
               <input type="radio" name="category" value="${c.id}" ${it.category === c.id ? 'checked' : ''}>
               <span>${c.icon} ${esc(c.name)}</span>
+            </label>`).join('')}`).join('')}
+        </fieldset>
+        <fieldset class="cats feel-chips">
+          <legend>どう感じた？（いくつでも・なくてもOK）</legend>
+          ${FEELINGS.map((f) => `
+            <label class="cat-chip">
+              <input type="checkbox" name="feelings" value="${f.id}" ${(it.feelings || []).includes(f.id) ? 'checked' : ''}>
+              <span>${f.icon} ${esc(f.name)}</span>
             </label>`).join('')}
         </fieldset>
         <label>発見した日時<input type="datetime-local" name="foundAt" value="${esc(it.foundAt)}"></label>
@@ -405,7 +431,7 @@ async function renderForm(id) {
 
       <section class="card">
         <h3>気づいたこと・仮説</h3>
-        <label>何が気になった？<textarea name="noticed" rows="3" placeholder="例：道の真ん中に、文字が刻まれた石が残っている">${esc(it.noticed)}</textarea></label>
+        <label>何が気になった？ 心が動いた理由は？<textarea name="noticed" rows="3" placeholder="例：道の真ん中に、文字が刻まれた石が残っている／夕日が坂の向こうに沈んでいくのがきれいだった">${esc(it.noticed)}</textarea></label>
         <label>仮説：なぜここにある？<textarea name="hypothesis" rows="3" placeholder="例：昔の分かれ道の道しるべ？">${esc(it.hypothesis)}</textarea></label>
       </section>
 
@@ -574,6 +600,7 @@ async function renderForm(id) {
         .map((s) => ({ title: s.title.trim(), url: s.url.trim() }))
         .filter((s) => s.title || s.url),
       confidence: fd.get('confidence') || 'guess',
+      feelings: fd.getAll('feelings').filter((f) => getFeeling(f)),
       photo: state.photo,
       thumb: state.thumb,
       createdAt: existing?.createdAt || now,
@@ -611,7 +638,7 @@ async function renderForm(id) {
 
 // ---------- 地図 ----------
 
-async function renderMap() {
+async function renderMap(params) {
   const items = await db.getAll();
   await updateHeader(items);
   const located = items.filter((it) => it.location);
@@ -621,7 +648,9 @@ async function renderMap() {
       <button class="btn map-locate" id="locate">📍 現在地</button>
       ${located.length === 0 ? '<p class="map-empty">場所付きの発見はまだありません。</p>' : ''}
     </div>`;
-  const map = createMap(document.getElementById('fullmap'));
+  const layer = params?.get('layer');
+  const map = createMap(document.getElementById('fullmap'), { layer: LAYERS[layer] ? layer : 'pale' });
+  if (LAYERS[layer]) toast(`地図を「${layerName(layer)}」にしました（右上で切り替え）`, 3500);
   maps.push(map);
 
   const bounds = [];
@@ -640,6 +669,7 @@ async function renderMap() {
   }
   if (bounds.length === 1) map.setView(bounds[0], 16);
   else if (bounds.length > 1) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+  if (LAYERS[layer] && LAYERS[layer].minNativeZoom >= 10 && map.getZoom() < 13) map.setZoom(13); // 昔の写真は広域では表示されない
 
   let here = null;
   document.getElementById('locate').addEventListener('click', () => {
@@ -663,25 +693,42 @@ async function renderMap() {
 async function renderZukan() {
   const items = await db.getAll();
   const s = await updateHeader(items);
-  const pct = Math.round((s.discoveredCats / CATEGORIES.length) * 100);
+  const feelCounts = Object.fromEntries(FEELINGS.map((f) => [f.id, 0]));
+  for (const it of items) for (const f of it.feelings || []) if (f in feelCounts) feelCounts[f]++;
+
+  const tile = (c) => {
+    const n = s.catCounts[c.id] || 0;
+    const d = DIFFICULTY[c.difficulty] || DIFFICULTY[1];
+    return n > 0
+      ? `<li class="found"><a href="#/guide/${c.id}" style="--c:${c.color}">
+          <span class="icon">${c.icon}</span>
+          <span class="name">${esc(c.name)}</span>
+          <span class="count">${n} 件</span></a></li>`
+      : `<li class="locked"><a href="#/guide/${c.id}">
+          <span class="icon">？</span>
+          <span class="name">${esc(c.name)}</span>
+          <span class="stars" title="${d.label}">${d.stars} ${d.label}</span>
+          <span class="hint">${esc(c.hint)}</span>
+          <span class="guide-link">探し方を見る →</span></a></li>`;
+  };
+
   main.innerHTML = `
     <h2>発見図鑑</h2>
-    <p>登録 ${s.discoveredCats} / ${CATEGORIES.length} 種類（${pct}%）</p>
-    <div class="progress"><span style="width:${pct}%"></span></div>
-    <ul class="zukan">
-      ${CATEGORIES.map((c) => {
-        const n = s.catCounts[c.id] || 0;
-        return n > 0
-          ? `<li class="found"><a href="#/list?cat=${c.id}" style="--c:${c.color}">
-              <span class="icon">${c.icon}</span>
-              <span class="name">${esc(c.name)}</span>
-              <span class="count">${n} 件</span></a></li>`
-          : `<li class="locked"><div>
-              <span class="icon">？</span>
-              <span class="name">${esc(c.name)}</span>
-              <span class="hint">${esc(c.hint)}</span></div></li>`;
-      }).join('')}
-    </ul>
+    <p>登録した種類 <b>${s.discoveredCats}</b> ・ 発見 <b>${s.total}</b> 件</p>
+    <p class="muted small">種類をタップすると、見分け方や探す場所のガイドが見られます。</p>
+    ${GROUPS.map((g) => `
+      <h3 class="zukan-group">${esc(g.name)}</h3>
+      <ul class="zukan">${categoriesInGroup(g.id).map(tile).join('')}</ul>`).join('')}
+
+    <section class="card">
+      <h3>こころの記録</h3>
+      <p class="muted small">心が動いたものを、気持ちごとに振り返れます。</p>
+      <ul class="feel-grid">
+        ${FEELINGS.map((f) => `<li><a href="#/list?feel=${f.id}" class="${feelCounts[f.id] ? 'has' : ''}">
+          <span class="icon">${f.icon}</span><span>${esc(f.name)}</span><b>${feelCounts[f.id]}</b></a></li>`).join('')}
+      </ul>
+    </section>
+
     <section class="card">
       <h3>経験値のしくみ</h3>
       <p class="muted small">歩いた距離ではなく、<b>どれだけ深く調べたか</b>で経験値が増えます。</p>
@@ -689,6 +736,48 @@ async function renderZukan() {
         ${DEPTHS.map((d, i) => `<li><span class="depth">${DEPTHS.map((_, j) => `<span class="dot ${j <= i ? 'on' : ''}"></span>`).join('')}</span> <b>${d.label}</b> +${d.xp} XP <span class="muted">— ${d.desc}</span></li>`).join('')}
         <li>図鑑に新しい種類を登録すると +${FIRST_IN_CATEGORY_BONUS} XP</li>
       </ul>
+    </section>`;
+}
+
+// ---------- 探し方ガイド ----------
+
+async function renderGuide(id) {
+  const c = CATEGORIES.find((x) => x.id === id);
+  if (!c) {
+    main.innerHTML = `<div class="card">この種類は見つかりませんでした。<a href="#/zukan">図鑑へ戻る</a></div>`;
+    return;
+  }
+  const items = await db.getAll();
+  await updateHeader(items);
+  const mine = items.filter((it) => it.category === c.id);
+  const d = DIFFICULTY[c.difficulty] || DIFFICULTY[1];
+  const g = c.guide || {};
+  const list = (arr) => `<ul class="guide-list">${arr.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
+
+  main.innerHTML = `
+    <p><a href="#/zukan">← 図鑑</a></p>
+    <div class="card guide-head" style="--c:${c.color}">
+      <span class="icon">${c.icon}</span>
+      <div>
+        <h2>${esc(c.name)}</h2>
+        <p class="stars">${d.stars} ${d.label}</p>
+        <p class="muted small">${esc(c.hint)}</p>
+      </div>
+    </div>
+
+    ${g.look?.length ? `<section class="card"><h3>👀 見分けるポイント</h3>${list(g.look)}</section>` : ''}
+    ${g.where?.length ? `<section class="card"><h3>📍 探す場所</h3>${list(g.where)}</section>` : ''}
+    ${g.map ? `<section class="card"><h3>🗺 地図で探す</h3><p>${esc(g.map.text)}</p>
+      <a class="btn" href="#/map?layer=${g.map.layer}">「${esc(layerName(g.map.layer))}」で地図を開く</a></section>` : ''}
+    ${g.tip ? `<section class="card"><h3>💡 コツ</h3><p>${esc(g.tip)}</p></section>` : ''}
+    ${g.caution ? `<p class="notice-inline">⚠ ${esc(g.caution)}</p>` : ''}
+
+    <section class="card">
+      <h3>あなたの記録</h3>
+      ${mine.length
+        ? `<p>${mine.length} 件見つけています。 <a href="#/list?cat=${c.id}">一覧で見る</a></p>`
+        : '<p class="muted">まだ見つけていません。次の散策で探してみましょう。</p>'}
+      <a class="btn primary" href="#/new?cat=${c.id}">この種類で記録する</a>
     </section>`;
 }
 
@@ -864,6 +953,7 @@ async function importData(e) {
           ? raw.sources.slice(0, 50).map((s) => ({ title: str(s?.title, 200), url: str(s?.url, 500) }))
           : [],
         confidence: ['guess', 'likely', 'sourced'].includes(raw.confidence) ? raw.confidence : 'guess',
+        feelings: Array.isArray(raw.feelings) ? raw.feelings.filter((f) => typeof f === 'string' && getFeeling(f)) : [],
         photo: isDataImage(raw.photo) ? await dataURLToBlob(raw.photo) : null,
         thumb: isDataImage(raw.thumb) ? await dataURLToBlob(raw.thumb) : null,
         createdAt: str(raw.createdAt, 40) || new Date().toISOString(),

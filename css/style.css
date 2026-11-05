@@ -261,3 +261,31 @@ body[data-route="new"] .fab, body[data-route="edit"] .fab { display: none; }
 .update-banner { max-width: 720px; margin: 12px auto 0; padding: 0 16px; }
 .update-banner .ub-body { background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--radius); padding: 12px 14px; }
 .update-banner ul { margin: 6px 0 10px; padding-left: 1.2em; font-size: 0.88rem; }
+
+/* グループ・ガイド・気持ち */
+.cat-group { width: 100%; margin: 8px 0 0; font-size: 0.78rem; color: var(--muted); font-weight: 700; }
+.cat-group:first-of-type { margin-top: 0; }
+.feel-chips { margin-top: 6px; }
+.filters { flex-wrap: wrap; }
+.filters select { flex: 1 1 40%; }
+.filters input { flex: 1 1 100%; }
+.feelings { display: inline-flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 6px; }
+.feelings .feel { font-size: 0.8rem; padding: 1px 8px; border-radius: 999px; background: var(--warn-bg); border: 1px solid var(--warn-line); }
+.feelings.mini { margin: 0; }
+.feelings.mini .feel { font-size: 0.7rem; padding: 0 6px; }
+.zukan-group { margin: 18px 0 0; font-size: 0.95rem; }
+.zukan { margin-top: 8px; }
+.zukan .stars { font-size: 0.72rem; color: #c28a00; }
+.zukan .guide-link { font-size: 0.72rem; color: var(--accent); margin-top: 2px; }
+.zukan .locked > a { border-style: dashed; }
+.guide-head { display: flex; gap: 14px; align-items: center; border-left: 6px solid var(--c); }
+.guide-head .icon { font-size: 2.6rem; }
+.guide-head h2 { margin: 0; }
+.guide-head p { margin: 2px 0; }
+.guide-head .stars { color: #c28a00; font-size: 0.85rem; }
+.guide-list { padding-left: 1.2em; margin: 0; }
+.guide-list li { margin: 3px 0; }
+.feel-grid { list-style: none; padding: 0 !important; margin: 8px 0 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.feel-grid a { display: flex; flex-direction: column; align-items: center; padding: 8px 2px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); text-decoration: none; font-size: 0.78rem; }
+.feel-grid a.has { color: var(--text); border-color: var(--warn-line); background: var(--warn-bg); }
+.feel-grid .icon { font-size: 1.4rem; }

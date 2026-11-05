@@ -3,7 +3,7 @@ import { CATEGORIES } from './categories.js';
 
 export const DEPTHS = [
   { key: 'found', label: '見つけた', xp: 10, desc: '写真か場所を記録した' },
-  { key: 'noticed', label: '気づいた', xp: 20, desc: '気になった点や仮説を書いた' },
+  { key: 'noticed', label: '気づいた', xp: 20, desc: '気になった点・心が動いた理由・仮説を書いた' },
   { key: 'researched', label: '調べた', xp: 30, desc: '調べて分かったことを書いた' },
   { key: 'verified', label: '裏付けた', xp: 50, desc: '出典付きで確かめた' },
 ];
