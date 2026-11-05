@@ -2,6 +2,7 @@ import * as db from './db.js';
 import { CATEGORIES, GROUPS, DIFFICULTY, FEELINGS, getCategory, getFeeling, categoriesInGroup } from './categories.js';
 import { DEPTHS, depthOf, xpOf, summarize, FIRST_IN_CATEGORY_BONUS } from './progress.js';
 import { processPhoto, blobToDataURL, dataURLToBlob } from './image.js';
+import { readExif } from './exif.js';
 import { createMap, categoryMarker, LAYERS, layerName } from './map.js';
 import { renderGo } from './go.js';
 import { getActiveTrip, STATUS_LABEL, walkDuration, formatDuration, tripNotes } from './trip.js';
@@ -446,6 +447,7 @@ async function renderForm(id, presetCategory = null) {
             </label>`).join('')}
         </fieldset>
         <label>発見した日時<input type="datetime-local" name="foundAt" value="${esc(it.foundAt)}"></label>
+        <p class="exif-row" id="exif-time" hidden></p>
       </section>
 
       <section class="card">
@@ -455,6 +457,7 @@ async function renderForm(id, presetCategory = null) {
           <button type="button" class="btn ghost" id="loc-clear">場所を外す</button>
         </div>
         <p class="muted small" id="loc-status"></p>
+        <p class="exif-row" id="exif-loc" hidden></p>
         <div class="minimap" id="form-map"></div>
         <p class="muted small">地図をタップすると場所を修正できます。位置情報は端末の中だけに保存されます。</p>
       </section>
@@ -508,14 +511,58 @@ async function renderForm(id, presetCategory = null) {
     }
     preview.innerHTML = '<p class="muted">処理中…</p>';
     try {
+      const exif = await readExif(file); // 保存時にメタデータを消す前に、撮影日時・場所を読む
       const { photo, thumb } = await processPhoto(file);
       state.photo = photo;
       state.thumb = thumb;
       formDirty = true;
+      applyExif(exif);
     } catch (err) {
       toast(err.message);
     }
     renderPreview();
+  }
+
+  // 写真の撮影日時・撮影場所を、発見の日時・場所として使えるようにする
+  const foundAtInput = form.querySelector('input[name=foundAt]');
+  let foundAtTouched = !!existing;
+  foundAtInput.addEventListener('input', () => (foundAtTouched = true));
+  const fmtLocal = (v) => formatDate(v).replace(/^\d{4}年/, '');
+  let exifTakenAt = null;
+  const timeRow = document.getElementById('exif-time');
+  function renderTimeRow() {
+    timeRow.hidden = !exifTakenAt;
+    if (!exifTakenAt) return;
+    const same = foundAtInput.value === exifTakenAt;
+    timeRow.innerHTML = `📷 写真の撮影日時：${esc(formatDate(exifTakenAt))} ${
+      same ? '<span class="muted">（発見日時にしています）</span>' : '<button type="button" class="btn small" id="use-exif-time">この日時にする</button>'
+    }`;
+  }
+  foundAtInput.addEventListener('input', renderTimeRow);
+  timeRow.addEventListener('click', (e) => {
+    if (e.target.id !== 'use-exif-time') return;
+    foundAtInput.value = exifTakenAt;
+    foundAtTouched = true;
+    formDirty = true;
+    renderTimeRow();
+  });
+  function applyExif({ takenAt, location }) {
+    const locRow = document.getElementById('exif-loc');
+    exifTakenAt = takenAt;
+    locRow.hidden = !location;
+    if (takenAt && !foundAtTouched) {
+      foundAtInput.value = takenAt; // 新しい記録で日時を触っていなければ、撮影日時をそのまま使う
+      toast(`写真の撮影日時（${fmtLocal(takenAt)}）を発見日時にしました`, 3500);
+    }
+    renderTimeRow();
+    if (location) {
+      locRow.innerHTML = `📷 写真に撮影場所が記録されています <button type="button" class="btn small" id="use-exif-loc">この場所を使う</button>`;
+      document.getElementById('use-exif-loc').addEventListener('click', () => {
+        setLocation({ ...location, accuracy: null, fromPhoto: true });
+        formDirty = true;
+        locRow.innerHTML = '📷 写真の撮影場所を使っています';
+      });
+    }
   }
   document.getElementById('photo-camera').addEventListener('change', onPhoto);
   document.getElementById('photo-file').addEventListener('change', onPhoto);
@@ -545,7 +592,7 @@ async function renderForm(id, presetCategory = null) {
     if (loc) {
       marker = L.marker([loc.lat, loc.lng]).addTo(fmap);
       if (pan) fmap.setView([loc.lat, loc.lng], Math.max(fmap.getZoom(), 16));
-      locStatus.textContent = `緯度 ${loc.lat.toFixed(5)} / 経度 ${loc.lng.toFixed(5)}${loc.accuracy ? `（誤差 約${Math.round(loc.accuracy)}m）` : '（地図で指定）'}`;
+      locStatus.textContent = `緯度 ${loc.lat.toFixed(5)} / 経度 ${loc.lng.toFixed(5)}${loc.accuracy ? `（誤差 約${Math.round(loc.accuracy)}m）` : loc.fromPhoto ? '（写真の撮影場所）' : '（地図で指定）'}`;
     } else {
       locStatus.textContent = '場所は未記録です。';
     }

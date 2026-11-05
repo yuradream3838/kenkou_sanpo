@@ -327,3 +327,6 @@ body[data-route="new"] .fab, body[data-route="edit"] .fab { display: none; }
 .timeline .tl-del { min-height: 28px; padding: 0 8px; }
 .trip-detail { flex-basis: 100%; order: 5; font-size: 0.88rem; }
 .trip-detail summary { cursor: pointer; color: var(--accent); }
+
+.exif-row { background: var(--accent-soft); border-radius: 8px; padding: 6px 10px; font-size: 0.85rem; margin: -4px 0 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.exif-row[hidden] { display: none; }

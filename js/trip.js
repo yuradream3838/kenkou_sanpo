@@ -71,7 +71,11 @@ export function timeline(trip, items = []) {
   const start = walkStart(trip);
   if (start) ev.push({ at: start, kind: 'start', text: `${trip.name}駅に着いて散歩開始` });
   for (const n of tripNotes(trip)) ev.push({ at: n.at, kind: 'note', text: n.text, id: n.id });
-  for (const it of items) ev.push({ at: it.createdAt, kind: 'find', text: it.title || '（無題の発見）', item: it });
+  // 発見は「発見した日時」（写真の撮影日時などで直したもの）の位置に並べる
+  for (const it of items) {
+    const t = it.foundAt ? Date.parse(it.foundAt) : NaN;
+    ev.push({ at: Number.isFinite(t) ? new Date(t).toISOString() : it.createdAt, kind: 'find', text: it.title || '（無題の発見）', item: it });
+  }
   if (trip.endedAt && start) ev.push({ at: trip.endedAt, kind: 'end', text: '帰る（散歩終了）' });
   return ev.sort((a, b) => String(a.at).localeCompare(String(b.at)));
 }
