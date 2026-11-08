@@ -8,7 +8,7 @@ import { createMap, categoryMarker } from './map.js';
 /* global L */
 
 const SETTINGS_KEY = 'go-settings';
-const DEFAULTS = { mode: 'near', baseType: 'current', baseStation: '', minKm: 2, maxKm: 10, excludeVisited: true, cooldown: 5, lines: [], noTransfer: false };
+const DEFAULTS = { mode: 'near', baseType: 'current', baseStation: '', minKm: 2, maxKm: 10, excludeVisited: true, cooldown: 5, lines: [], noTransfer: false, pickStation: '' };
 const RECENT_KEY = 'go-recent'; // 抽選で出た駅名（新しい順）
 const COOLDOWN_OPTIONS = [0, 1, 3, 5, 10, 20, 30, 50];
 const RECENT_MAX = 50;
@@ -101,15 +101,23 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
   main.innerHTML = `
     <h2>おでかけ</h2>
     <div id="active-trip"></div>
-    <h3 class="go-form-title" id="go-form-title">🎲 行き先を決める</h3>
-    <p class="muted small">${esc(data.prefName)}の ${stations.length} 駅から、散策のスタート地点をランダムに決めます。</p>
+    <h3 class="go-form-title" id="go-form-title">🚩 行き先を決める</h3>
+    <p class="muted small" id="go-form-desc"></p>
 
     <form class="card go-form" id="go-form">
       <fieldset class="segmented">
         <legend>選び方</legend>
         <label><input type="radio" name="mode" value="near" ${settings.mode === 'near' ? 'checked' : ''}><span>距離で選ぶ</span></label>
         <label><input type="radio" name="mode" value="pref" ${settings.mode === 'pref' ? 'checked' : ''}><span>県内どこでも</span></label>
+        <label><input type="radio" name="mode" value="pick" ${settings.mode === 'pick' ? 'checked' : ''}><span>駅を選ぶ</span></label>
       </fieldset>
+
+      <div id="pick-options">
+        <label>行きたい駅
+          <input name="pickStation" list="station-list" value="${esc(settings.pickStation)}" placeholder="例：鎌倉" autocomplete="off">
+        </label>
+        <p class="muted small">駅名の一部を入れると候補が出ます。</p>
+      </div>
 
       <div id="near-options">
         <fieldset class="inline-radios">
@@ -135,6 +143,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
         <p class="muted small" id="no-transfer-note"></p>
       </div>
 
+      <div id="random-options">
       <details class="line-filter" ${settings.lines.length ? 'open' : ''}>
         <summary>🚃 路線でしぼる：<span id="line-summary"></span></summary>
         <div class="line-groups">
@@ -156,6 +165,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
         <select name="cooldown">${COOLDOWN_OPTIONS.map((v) => `<option value="${v}" ${v === settings.cooldown ? 'selected' : ''}>${v === 0 ? 'なし（同じ駅が続けて出てもよい）' : `その後 ${v} 回の抽選`}</option>`).join('')}</select>
       </label>
       <p class="muted small cooldown-note"><span id="recent-info"></span> <button type="button" class="btn ghost small" id="recent-reset">抽選履歴をリセット</button></p>
+      </div>
 
       <button type="submit" class="btn primary big" id="draw">🎲 行き先を決める</button>
     </form>
@@ -186,12 +196,20 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
       cooldown: Number(fd.get('cooldown')) || 0,
       lines: fd.getAll('lines'),
       noTransfer: fd.get('noTransfer') === 'on',
+      pickStation: String(fd.get('pickStation') || '').trim().replace(/駅$/, ''),
     };
   }
 
   function syncVisibility() {
     const s = readForm();
     document.getElementById('near-options').hidden = s.mode !== 'near';
+    document.getElementById('pick-options').hidden = s.mode !== 'pick';
+    document.getElementById('random-options').hidden = s.mode === 'pick';
+    document.getElementById('draw').textContent = s.mode === 'pick' ? '🚩 この駅にする' : '🎲 行き先を決める';
+    document.getElementById('go-form-desc').textContent =
+      s.mode === 'pick'
+        ? '行きたい駅を自分で選んで、散歩に出かけます。'
+        : `${data.prefName}の ${stations.length} 駅から、散策のスタート地点をランダムに決めます。`;
     document.getElementById('base-station-wrap').hidden = s.baseType !== 'station';
     document.getElementById('line-summary').textContent = s.lines.length
       ? s.lines.map((l) => l.replace(/^\S+ /, '')).join('・')
@@ -274,7 +292,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
     clearInterval(tick);
     const trips = await db.getTrips();
     const t = trips.find(isActive);
-    document.getElementById('go-form-title').textContent = t ? '🎲 別の行き先を決める' : '🎲 行き先を決める';
+    document.getElementById('go-form-title').textContent = t ? '🚩 別の行き先を決める' : '🚩 行き先を決める';
     if (!t) {
       el.innerHTML = '';
       return null;
@@ -409,6 +427,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
             ${t.visitedAt
               ? `<button type="button" class="btn ghost small" data-act="unvisit">取り消し</button>`
               : `<button type="button" class="btn small" data-act="visit">行った！</button>`}
+            ${byName.has(t.name) ? '<button type="button" class="btn small" data-act="again">もう一度行く</button>' : ''}
             <button type="button" class="btn ghost small" data-act="delete" aria-label="${esc(t.name)}駅を履歴から削除">✕</button>
           </span>
         </li>`;
@@ -425,6 +444,9 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
     const trips = await db.getTrips();
     const trip = trips.find((t) => t.id === id);
     if (!trip) return;
+    if (btn.dataset.act === 'again') {
+      return goToStation(byName.get(trip.name), `もう一度行く（前回 ${formatDay(trip.visitedAt || trip.decidedAt)}）`);
+    }
     if (btn.dataset.act === 'visit') {
       await db.putTrip({ ...trip, visitedAt: new Date().toISOString() });
       toast(`${trip.name}駅をコレクションに追加しました`);
@@ -449,9 +471,37 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
     return { theme: pool[Math.floor(Math.random() * pool.length)], items, isNew: notYet.length > 0 };
   }
 
+  // 駅名から駅を探す（完全一致 → 前方一致 → 部分一致）
+  function findStation(q) {
+    if (!q) return { st: null, matches: [] };
+    if (byName.has(q)) return { st: byName.get(q), matches: [] };
+    const starts = stations.filter((x) => x.n.startsWith(q));
+    const matches = starts.length ? starts : stations.filter((x) => x.n.includes(q));
+    return { st: matches.length === 1 ? matches[0] : null, matches };
+  }
+
+  async function goToStation(st, note) {
+    await showResult({ ...st, km: null }, { picked: true, filterNote: note });
+  }
+
   async function draw() {
     const s = readForm();
     saveSettings(s);
+    if (s.mode === 'pick') {
+      const { st, matches } = findStation(s.pickStation);
+      if (!s.pickStation) return toast('行きたい駅を入力してください');
+      if (!st) {
+        return toast(
+          matches.length
+            ? `候補が ${matches.length} 駅あります：${matches.slice(0, 6).map((x) => x.n).join('、')}${matches.length > 6 ? '…' : ''}`
+            : `「${s.pickStation}」という駅が見つかりません（神奈川県内の駅から選べます）`,
+          4500
+        );
+      }
+      form.pickStation.value = st.n;
+      saveSettings(readForm());
+      return goToStation(st, '自分で選んだ駅');
+    }
     let base = null;
     let baseLabel = '';
     if (s.mode === 'near') {
@@ -530,7 +580,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
     await showResult(choice, { count: pool.length, baseLabel, base, cooldownNote, filterNote });
   }
 
-  async function showResult(st, { count, baseLabel, base, cooldownNote = '', filterNote = '' }) {
+  async function showResult(st, { count, baseLabel, base, cooldownNote = '', filterNote = '', picked = false }) {
     if (resultMap) {
       resultMap.stop();
       resultMap.remove();
@@ -542,7 +592,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
     resultEl.innerHTML = `<div class="card go-result"><p class="station-name rolling" id="rolling"></p></div>`;
     const rolling = document.getElementById('rolling');
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!reduce) {
+    if (!reduce && !picked) {
       for (let i = 0; i < 14; i++) {
         rolling.textContent = stations[Math.floor(Math.random() * stations.length)].n;
         await sleep(40 + i * 6);
@@ -554,7 +604,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
 
     resultEl.innerHTML = `
       <div class="card go-result">
-        <p class="muted small">${filterNote ? `${esc(filterNote)}<br>` : ''}候補 ${count} 駅から選びました${cooldownNote ? `<br>${esc(cooldownNote)}` : ''}</p>
+        <p class="muted small">${picked ? esc(filterNote) : `${filterNote ? `${esc(filterNote)}<br>` : ''}候補 ${count} 駅から選びました${cooldownNote ? `<br>${esc(cooldownNote)}` : ''}`}</p>
         <p class="station-name">${esc(st.n)}<small>駅</small></p>
         <ul class="lines">${st.l.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
         ${st.km !== null ? `<p>${esc(baseLabel)} 直線で約 <b>${st.km.toFixed(1)} km</b></p>` : ''}
@@ -567,7 +617,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
         <p class="muted small">${nearby ? `この駅の周り（${NEARBY_KM}km）には、あなたの発見が ${nearby} 件あります。` : 'この駅の周りでの発見はまだありません。'}</p>
         <div class="row go-actions">
           <button type="button" class="btn primary" id="go-commit">ここに行く！</button>
-          <button type="button" class="btn" id="go-again">🎲 もう一回</button>
+          ${picked ? '' : '<button type="button" class="btn" id="go-again">🎲 もう一回</button>'}
           ${directionsButtons(st)}
         </div>
       </div>`;
@@ -584,7 +634,7 @@ export async function renderGo({ main, esc, toast, addMap, updateHeader }) {
     const shownMap = resultMap;
     setTimeout(() => shownMap === resultMap && shownMap.invalidateSize({ animate: false }), 50);
 
-    document.getElementById('go-again').addEventListener('click', draw);
+    document.getElementById('go-again')?.addEventListener('click', draw);
     const commit = document.getElementById('go-commit');
     commit.addEventListener('click', async () => {
       const now = new Date().toISOString();

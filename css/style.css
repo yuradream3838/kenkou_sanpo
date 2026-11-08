@@ -354,3 +354,5 @@ body[data-route="new"] .fab, body[data-route="edit"] .fab { display: none; }
 .cat-head { display: flex; align-items: center; gap: 10px; border-left: 6px solid var(--c); flex-wrap: wrap; }
 .cat-head .icon { font-size: 2rem; }
 .cat-head > div { flex: 1; min-width: 120px; }
+
+.segmented span { padding-left: 2px; padding-right: 2px; }
