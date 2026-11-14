@@ -126,18 +126,30 @@ export async function markAllPending() {
 }
 
 // ---------- サーバとのやりとり ----------
+// JSON を gzip で圧縮する（ConoHa の WAF が文章の中身で通信を止めないように）。使えないブラウザでは圧縮しない。
+async function gzipJson(obj) {
+  const text = JSON.stringify(obj);
+  if (typeof CompressionStream === 'undefined') return { body: text, type: 'application/json' };
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
+  return { body: await new Response(stream).blob(), type: 'application/octet-stream' };
+}
+
 async function api(a, { params = {}, method = 'GET', json, body, blob = false } = {}) {
   const s = loadSettings();
   const url = new URL(s.url);
   url.searchParams.set('a', a);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const headers = { 'X-Sync-Auth': s.auth, 'X-Device': encodeURIComponent(s.device || defaultDeviceName()) };
-  if (json) headers['Content-Type'] = 'application/json';
+  if (json) {
+    const packed = await gzipJson(json);
+    body = packed.body;
+    headers['Content-Type'] = packed.type;
+  }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 60000);
   let res;
   try {
-    res = await fetch(url, { method, headers, body: json ? JSON.stringify(json) : body, signal: ctrl.signal, cache: 'no-store' });
+    res = await fetch(url, { method, headers, body, signal: ctrl.signal, cache: 'no-store' });
   } catch (e) {
     if (e.name === 'AbortError') throw new Error('サーバの応答がありません（時間切れ）');
     throw new Error(await diagnose(s.url));
@@ -161,6 +173,8 @@ async function api(a, { params = {}, method = 'GET', json, body, blob = false } 
       config_syntax: 'サーバの config.php に書き間違いがあります（貼った値を \' \' で囲んでいるか、行の最後の ; があるか確認）',
       php: `サーバの PHP でエラーが出ています：${detail}`,
       too_large: '大きすぎて送れませんでした',
+      gzip: 'サーバで圧縮したデータを読めませんでした（サーバの PHP に zlib が必要）',
+      format: 'サーバが送ったデータを読めませんでした（サーバの sync.php を最新の版に置き直してください）',
     }[code];
     throw new Error(msg || `サーバのエラー（${res.status}${code ? ' ' + code : ''}）`);
   }
@@ -202,6 +216,17 @@ export async function diagnoseDetail() {
   await step('3 本番と同じ(ヘッダつき)', () =>
     fetch(url, { cache: 'no-store', headers: { 'X-Sync-Auth': s.auth || '0'.repeat(64), 'X-Device': encodeURIComponent(s.device || '') } })
   );
+  const post = new URL(s.url);
+  post.searchParams.set('a', 'pmissing');
+  const packed = await gzipJson({ ids: [] });
+  await step('4 送れるか(POST・圧縮)', () =>
+    fetch(post, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { 'X-Sync-Auth': s.auth || '0'.repeat(64), 'X-Device': encodeURIComponent(s.device || ''), 'Content-Type': packed.type },
+      body: packed.body,
+    })
+  );
   return lines.join('\n');
 }
 
@@ -220,7 +245,7 @@ async function diagnose(url) {
   // 中身は読めなくても、サーバまで届くかだけを確かめる
   try {
     await fetch(u.href, { mode: 'no-cors', cache: 'no-store' });
-    return 'サーバには届いていますが、返事を読めませんでした。ブラウザで sync.php の URL を直接開いて、表示を確かめてください（{"error":"auth"} と出れば正常。ページが見つからない表示ならフォルダ名・ファイル名の違い）';
+    return 'サーバには届いていますが、返事を読めませんでした。sync.php が古い（置き直す）、URL のフォルダ名の違い、ConoHa の WAF に止められた、などが考えられます。「🔍 つながらない原因を調べる」の結果を確かめてください';
   } catch {
     return 'サーバにつながりません。URL のドメイン・フォルダ名と電波を確認してください';
   }

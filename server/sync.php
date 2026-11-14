@@ -39,8 +39,15 @@ function readBody(int $max): string {
   return $body;
 }
 
+// 記録は gzip で圧縮して届く（ConoHa の WAF は文章の中の言葉の並びで通信を止めることがあるため、文字のまま送らない）。
+// 圧縮していない JSON もそのまま受け取る。
 function readJsonBody(): array {
-  $j = json_decode(readBody(SANPO_MAX_JSON_BYTES), true);
+  $raw = readBody(SANPO_MAX_JSON_BYTES);
+  if (strncmp($raw, "\x1f\x8b", 2) === 0) {
+    $raw = function_exists('gzdecode') ? @gzdecode($raw, SANPO_MAX_JSON_BYTES * 4) : false;
+    if (!is_string($raw)) out(400, ['error' => 'gzip']);
+  }
+  $j = json_decode($raw, true);
   if (!is_array($j)) out(400, ['error' => 'format']);
   return $j;
 }
