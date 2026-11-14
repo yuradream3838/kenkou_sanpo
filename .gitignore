@@ -1,0 +1,3 @@
+# サーバの設定（合言葉のハッシュなど）はコミットしない
+server/config.php
+server/sanpo_data/

@@ -356,3 +356,16 @@ body[data-route="new"] .fab, body[data-route="edit"] .fab { display: none; }
 .cat-head > div { flex: 1; min-width: 120px; }
 
 .segmented span { padding-left: 2px; padding-right: 2px; }
+
+/* ☁️ 同期 */
+.sync-status { background: var(--accent-soft); border-radius: 8px; padding: 8px 12px; margin: 8px 0; font-size: 0.9rem; }
+.sync-status p { margin: 2px 0; }
+.sync-status.err { background: var(--warn-bg); border: 1px solid var(--warn-line); }
+.err-text { color: var(--danger); }
+.sync-more { margin-top: 10px; font-size: 0.9rem; }
+.sync-more summary { cursor: pointer; color: var(--accent); }
+.sync-more ol { padding-left: 1.3em; }
+code.hash { word-break: break-all; font-size: 0.75rem; background: var(--bg); padding: 2px 4px; border-radius: 4px; display: inline-block; max-width: 100%; }
+.ai-title { margin-top: 18px; }
+.sync-first { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 8px; padding: 10px 12px; margin: 8px 0; }
+.sync-first ol { padding-left: 1.3em; margin: 6px 0; }

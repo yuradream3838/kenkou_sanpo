@@ -3,6 +3,8 @@ import { CATEGORIES, GROUPS, DIFFICULTY, FEELINGS, getCategory, getFeeling, cate
 import { DEPTHS, depthOf, xpOf, summarize, FIRST_IN_CATEGORY_BONUS } from './progress.js';
 import { processPhoto, blobToDataURL, dataURLToBlob } from './image.js';
 import { readExif } from './exif.js';
+import { initSync, isConfigured } from './sync.js';
+import { renderSyncSection } from './sync-ui.js';
 import { createMap, categoryMarker, LAYERS, layerName } from './map.js';
 import { renderGo } from './go.js';
 import { getActiveTrip, STATUS_LABEL, walkDuration, formatDuration, tripNotes } from './trip.js';
@@ -511,6 +513,7 @@ async function renderForm(id, presetCategory = null) {
           ${[['guess', '推測'], ['likely', 'ほぼ確実'], ['sourced', '出典あり']].map(([v, l]) => `
             <label><input type="radio" name="confidence" value="${v}" ${it.confidence === v ? 'checked' : ''}> ${l}</label>`).join('')}
         </fieldset>
+        <label class="check small"><input type="checkbox" name="hideFromAi" ${it.hideFromAi ? 'checked' : ''}> 🤖 AI 用の窓口に出さない</label>
       </section>
 
       <div class="actions sticky">
@@ -738,6 +741,7 @@ async function renderForm(id, presetCategory = null) {
         .map((s) => ({ title: s.title.trim(), url: s.url.trim() }))
         .filter((s) => s.title || s.url),
       confidence: fd.get('confidence') || 'guess',
+      hideFromAi: fd.get('hideFromAi') === 'on',
       feelings: fd.getAll('feelings').filter((f) => getFeeling(f)),
       tripId: existing ? existing.tripId || null : activeTrip && fd.get('linkTrip') === 'on' ? activeTrip.id : null,
       photos: state.photos,
@@ -952,7 +956,7 @@ async function renderSettings() {
     <h2>設定・データ</h2>
     <section class="card">
       <h3>データの保存場所</h3>
-      <p>記録はすべて<b>この端末のブラウザの中だけ</b>に保存されます。サーバーには送信されません。</p>
+      <p>記録は<b>この端末のブラウザの中</b>に保存されます。下の「☁️ ConoHa 同期」を設定したときだけ、自分のサーバにも預けます。</p>
       <p class="muted small">${usage}${persisted === null ? '' : persisted ? ' ・ 永続保存：有効' : ' ・ 永続保存：未許可（空き容量が少ないとブラウザに消される可能性があります）'}</p>
       <p class="muted small">機種変更やブラウザのデータ削除に備えて、定期的に書き出し（バックアップ）してください。</p>
       <div class="row">
@@ -960,6 +964,7 @@ async function renderSettings() {
         <label class="btn">読み込み<input type="file" accept="application/json,.json" id="import" hidden></label>
       </div>
     </section>
+    <section class="card" id="sync-section"></section>
     <section class="card">
       <h3>このアプリについて</h3>
       <p>発見ノート v${APP_VERSION}</p>
@@ -973,10 +978,11 @@ async function renderSettings() {
     </section>
     <section class="card">
       <h3>すべて削除</h3>
-      <p class="muted small">この端末に保存された発見と、おでかけの履歴をすべて削除します。元に戻せません。</p>
+      <p class="muted small">この端末に保存された発見と、おでかけの履歴をすべて削除します。元に戻せません。${isConfigured() ? '（☁️ 同期しているサーバのデータは消えません。「サーバから全部受け取り直す」で戻せます）' : ''}</p>
       <button class="btn danger" id="wipe">すべて削除</button>
     </section>`;
 
+  renderSyncSection(document.getElementById('sync-section'), { esc, toast });
   document.getElementById('export').addEventListener('click', () => exportData(items));
   document.getElementById('import').addEventListener('change', importData);
   document.getElementById('wipe').addEventListener('click', async () => {
@@ -1116,6 +1122,7 @@ async function importData(e) {
           ? raw.sources.slice(0, 50).map((s) => ({ title: str(s?.title, 200), url: str(s?.url, 500) }))
           : [],
         confidence: ['guess', 'likely', 'sourced'].includes(raw.confidence) ? raw.confidence : 'guess',
+        hideFromAi: raw.hideFromAi === true,
         feelings: Array.isArray(raw.feelings) ? raw.feelings.filter((f) => typeof f === 'string' && getFeeling(f)) : [],
         tripId: str(raw.tripId, 100) || null,
         photos: await importPhotos(raw),
@@ -1216,6 +1223,17 @@ window.addEventListener('hashchange', () => {
   }
   leaveGuard = null;
   lastHash = location.hash;
+  router();
+});
+
+// ☁️ 同期：ほかの端末の変更を受け取ったら、入力中でなければ画面を描き直す
+initSync();
+window.addEventListener('sync:applied', () => {
+  const name = parseRoute().name;
+  if (formDirty || name === 'new' || name === 'edit' || name === 'settings') {
+    updateHeader();
+    return;
+  }
   router();
 });
 

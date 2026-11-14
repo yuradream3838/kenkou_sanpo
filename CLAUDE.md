@@ -10,4 +10,6 @@
 ## 開発メモ
 - ビルド不要の静的 PWA。`python3 -m http.server` で確認できる。
 - 詳細は README.md を参照。
-- ☁️ 同期・AI閲覧の設計案（未実装）は docs/SYNC_DESIGN.md。健康管理アプリ（yuradream3838/health-app）の sync.php（ConoHa）を参考にしている。
+- ☁️ 同期・AI 用の窓口の仕様は docs/SYNC_DESIGN.md。サーバは server/（PHP）。**同期の仕組み・API を変えたら docs/SYNC_DESIGN.md も同じコミットで更新する。**
+- **server/config.php（合言葉・トークンのハッシュ）はコミットしない**（.gitignore 済み。ひな形は server/config.php.example）。
+- 同期のテスト：server/ を `php -d opcache.enable=0 -S` で、アプリを `python3 -m http.server` で動かし、2 つのブラウザで送る・受け取る・同時編集・削除・AI 窓口を確かめる。

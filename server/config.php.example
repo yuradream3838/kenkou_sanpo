@@ -1,0 +1,17 @@
+<?php
+// 発見ノート ☁️ 同期の設定（ひな形）
+// このファイルを config.php という名前でコピーし、値を書き込んで sync.php・ai.php・common.php と同じフォルダに置く。
+// config.php はリポジトリにコミットしない（.gitignore 済み）。
+
+// 書き込み用：アプリの「⚙設定 → ☁️ ConoHa 同期 → サーバに貼る値（書き込み用）」を貼る（64桁の16進）
+const SANPO_AUTH_HASH = '';
+
+// AI 用（読み取り専用）：アプリの「AI 用トークン → サーバに貼る値（AI用）」を貼る（64桁の16進）。
+// 空なら AI 用の窓口（ai.php）は使えない。作り直したら、ここを新しい値に貼り替える（古い URL は使えなくなる）。
+const SANPO_READ_HASH = '';
+
+// アプリを開いているサイト（ブラウザからの呼び出しを許す相手）
+const SANPO_ALLOWED_ORIGINS = ['https://yuradream3838.github.io'];
+
+// データの置き場所（初回に自動で作り、外から直接は読めないようにする）
+const SANPO_DATA_DIR = __DIR__ . '/sanpo_data';

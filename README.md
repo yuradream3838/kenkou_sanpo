@@ -35,9 +35,15 @@
 - オフライン対応（Service Worker）、更新の自動反映
 - 更新履歴（設定 → 更新履歴）と、更新後の初回起動時のお知らせ
 
+## ☁️ ConoHa 同期・AI 用の窓口（任意）
+
+自分のサーバ（ConoHa WING など PHP が動くサーバ）に記録と写真（1600px）を預けて、PC など別の端末と同期できます。
+AI 用の読み取り専用 URL（`ai.php?t=…`）を Claude・ChatGPT などに渡すと、散歩や発見を読んでもらえます。
+サーバ側のファイルは `server/`、設定のしかたと仕様は [docs/SYNC_DESIGN.md](docs/SYNC_DESIGN.md)。
+
 ## プライバシー設計
 
-- データはすべて端末内（IndexedDB）に保存。サーバーへの送信なし
+- データは端末内（IndexedDB）に保存。☁️ 同期を設定したときだけ、自分のサーバに送る
 - 位置情報はボタンを押したときのみ取得
 - 写真は Canvas で再エンコードし EXIF（撮影位置など）を削除
 - 詳細は `privacy.html`
@@ -57,6 +63,9 @@ js/image.js           写真の縮小と EXIF 除去
 js/map.js             地図（Leaflet + 国土地理院タイル）
 js/go.js              おでかけ（行き先の抽選・いまのおでかけ・駅コレクション）
 js/trip.js            おでかけの状態（移動中・到着・終了）と経路リンク
+js/sync.js            ☁️ ConoHa 同期（送る・受け取る・自動）
+js/sync-ui.js         ⚙設定の同期・AI 用の窓口の画面
+server/               同期サーバ（sync.php・ai.php・common.php・config.php.example）
 js/stations.js        駅データの読み込み・距離計算・抽選
 data/stations/14.json 神奈川県の駅一覧（tools/build_stations.py で生成）
 sw.js                 Service Worker
