@@ -2,7 +2,7 @@
 import * as db from './db.js';
 import {
   DEFAULT_URL, normalizeUrl, loadSettings, saveSettings, isConfigured, defaultDeviceName, deriveAuth, newReadToken, aiUrl,
-  getStatus, onStatus, pendingCount, markAllPending, syncNow, testConnection,
+  getStatus, onStatus, pendingCount, markAllPending, syncNow, testConnection, diagnoseDetail,
 } from './sync.js';
 
 async function copy(text, toast) {
@@ -46,6 +46,9 @@ export async function renderSyncSection(el, { esc, toast }) {
           <button type="button" class="btn primary" id="sync-test">接続を確かめる</button>
           <button type="button" class="btn ghost small" id="sync-forget">設定をやり直す</button>
         </div>
+        <p class="small">いまの URL：<code class="hash">${esc(s.url || '')}</code></p>
+        <button type="button" class="btn small" data-diag>🔍 つながらない原因を調べる</button>
+        <div class="diag-out" hidden></div>
         ${st.error ? `<p class="err-text small">⚠ ${esc(st.error)}</p>` : ''}
       </div>
     ` : ''}
@@ -66,9 +69,11 @@ export async function renderSyncSection(el, { esc, toast }) {
           <button type="button" class="btn ghost small" data-copy="${esc(s.authHash || '')}">コピー</button></p>
         <div class="row">
           <button type="button" class="btn small" id="sync-test">接続を確かめる</button>
+          <button type="button" class="btn small" data-diag>🔍 つながらない原因を調べる</button>
           <button type="button" class="btn small" id="sync-refetch">サーバから全部受け取り直す</button>
           <button type="button" class="btn ghost small" id="sync-forget">この端末の同期設定を消す</button>
         </div>
+        <div class="diag-out" hidden></div>
       </details>
     ` : ''}
     ${!configured ? `
@@ -138,6 +143,19 @@ export async function renderSyncSection(el, { esc, toast }) {
     }
     rerender();
   });
+
+  el.querySelectorAll('[data-diag]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const box = btn.parentElement.querySelector('.diag-out') || el.querySelector('.diag-out');
+      box.hidden = false;
+      box.innerHTML = '<p class="small muted">調べています…</p>';
+      const text = await diagnoseDetail();
+      box.innerHTML = `<p class="small">この結果をコピーして送ってください（合言葉は含まれません）。</p>
+        <textarea readonly rows="9" class="diag-text">${esc(text)}</textarea>
+        <button type="button" class="btn small" data-copy-diag>結果をコピー</button>`;
+      box.querySelector('[data-copy-diag]').addEventListener('click', () => copy(text, toast));
+    })
+  );
 
   el.querySelector('#sync-test')?.addEventListener('click', async () => {
     try {

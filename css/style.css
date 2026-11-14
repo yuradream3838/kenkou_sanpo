@@ -369,3 +369,5 @@ code.hash { word-break: break-all; font-size: 0.75rem; background: var(--bg); pa
 .ai-title { margin-top: 18px; }
 .sync-first { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 8px; padding: 10px 12px; margin: 8px 0; }
 .sync-first ol { padding-left: 1.3em; margin: 6px 0; }
+.diag-out { margin-top: 8px; }
+.diag-text { font-family: ui-monospace, monospace; font-size: 0.72rem; }

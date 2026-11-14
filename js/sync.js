@@ -171,6 +171,40 @@ export async function testConnection() {
   return api('meta');
 }
 
+// つながらないときの調べ（結果を文字でまとめる。合言葉の値は出さない）
+export async function diagnoseDetail() {
+  const s = loadSettings();
+  const lines = [];
+  const add = (k, v) => lines.push(`${k}: ${v}`);
+  add('アプリ', location.href.split('#')[0]);
+  add('ブラウザ', navigator.userAgent);
+  add('オンライン', navigator.onLine ? 'はい' : 'いいえ');
+  add('保存されたURL', JSON.stringify(s.url || ''));
+  if (!s.url) return lines.join('\n');
+  const url = new URL(s.url);
+  url.searchParams.set('a', 'meta');
+  const step = async (label, fn) => {
+    try {
+      const r = await fn();
+      let body = '';
+      try {
+        body = r.type === 'opaque' ? '(中身は読めない形)' : (await r.text()).slice(0, 120);
+      } catch (e) {
+        body = '(読めない: ' + e.message + ')';
+      }
+      add(label, `${r.type} ${r.status} ${body}`);
+    } catch (e) {
+      add(label, `失敗 ${e.name}: ${e.message}`);
+    }
+  };
+  await step('1 届くか(no-cors)', () => fetch(url, { mode: 'no-cors', cache: 'no-store' }));
+  await step('2 読めるか(ヘッダなし)', () => fetch(url, { cache: 'no-store' }));
+  await step('3 本番と同じ(ヘッダつき)', () =>
+    fetch(url, { cache: 'no-store', headers: { 'X-Sync-Auth': s.auth || '0'.repeat(64), 'X-Device': encodeURIComponent(s.device || '') } })
+  );
+  return lines.join('\n');
+}
+
 // つながらなかった理由をできるだけ見分ける
 async function diagnose(url) {
   let u;
