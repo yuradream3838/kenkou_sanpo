@@ -39,10 +39,20 @@ function readBody(int $max): string {
   return $body;
 }
 
-// 記録は gzip で圧縮して届く（ConoHa の WAF は文章の中の言葉の並びで通信を止めることがあるため、文字のまま送らない）。
-// 圧縮していない JSON もそのまま受け取る。
+// ConoHa の WAF は、送られてきた中身に攻撃に似たバイトの並びがあると通信を止める（写真や圧縮データでも偶然起きる）。
+// そのためアプリは中身を「B64:」＋ base64url（英数字と - _ だけ）にして送る。ここで元に戻す。
+// 「B64:」の付いていない本文（以前のアプリ・curl など）もそのまま受け取る。
+function decodeBody(string $raw): string {
+  if (strncmp($raw, 'B64:', 4) !== 0) return $raw;
+  $b = base64_decode(strtr(substr($raw, 4), '-_', '+/'), true);
+  if (!is_string($b)) out(400, ['error' => 'base64']);
+  return $b;
+}
+
+// 記録は gzip で圧縮して届く（圧縮していない JSON も受け取る）。
 function readJsonBody(): array {
-  $raw = readBody(SANPO_MAX_JSON_BYTES);
+  $raw = decodeBody(readBody((int)(SANPO_MAX_JSON_BYTES * 1.4) + 16));
+  if (strlen($raw) > SANPO_MAX_JSON_BYTES) out(413, ['error' => 'too_large']);
   if (strncmp($raw, "\x1f\x8b", 2) === 0) {
     $raw = function_exists('gzdecode') ? @gzdecode($raw, SANPO_MAX_JSON_BYTES * 4) : false;
     if (!is_string($raw)) out(400, ['error' => 'gzip']);
@@ -161,7 +171,8 @@ if ($a === 'pput') {
   $id = safeId($_GET['id'] ?? null);
   $size = $_GET['size'] ?? '';
   if ($id === null || !in_array($size, ['photo', 'thumb'], true)) out(400, ['error' => 'id']);
-  $body = readBody(SANPO_MAX_PHOTO_BYTES);
+  $body = decodeBody(readBody((int)(SANPO_MAX_PHOTO_BYTES * 1.4) + 16));
+  if (strlen($body) > SANPO_MAX_PHOTO_BYTES) out(413, ['error' => 'too_large']);
   if (strlen($body) < 4 || substr($body, 0, 2) !== "\xFF\xD8") out(400, ['error' => 'format']);   // JPEG だけ
   $path = photoPath($id, $size);
   if (!file_exists($path) && !writeAtomic($path, $body)) out(500, ['error' => 'write']);

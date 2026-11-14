@@ -1,6 +1,6 @@
 # 発見ノート ☁️ 同期・AI 閲覧（仕様）
 
-最終更新: v0.14.4（2026-11-14）
+最終更新: v0.14.5（2026-11-14）
 
 健康管理アプリ（yuradream3838/health-app）の ConoHa 同期（`sync.php`）を参考にしているが、
 **写真を扱うため・AI から読むため**に、仕組みは別物にしている（2章）。
@@ -80,7 +80,9 @@ rev.txt            今の通し番号
 | `pput&id=&size=photo\|thumb` | POST | 写真（JPEG のみ・8MB まで）。同じものがあれば何もしない | `{ok:true}` |
 | `photo&id=&size=` | GET | 写真 | JPEG |
 
-- **POST の JSON（`put`・`pmissing`）は gzip で圧縮して送る**（`Content-Type: application/octet-stream`、本文の先頭が `1f 8b`）。サーバは先頭を見て展開する（圧縮していない JSON も受け取る）。
+- **POST の本文は「`B64:`」＋ base64url（英数字と `-` `_` だけ）にして送る**（`Content-Type: text/plain`）。写真（`pput`）は JPEG を、記録（`put`・`pmissing`）は gzip した JSON を変換する。サーバは `B64:` を見て元に戻す（付いていない本文も受け取る）。
+  ConoHa の WAF は、写真や圧縮データのような**バイナリでも偶然「攻撃に似た並び」があると止める**（本物のサーバで、アプリと同じ作り方の写真 30 枚中 8 枚が 403。base64url にすると 40 枚すべて通った・v0.14.5）。
+- （v0.14.4 の段階）POST の JSON は gzip で圧縮して送る（`Content-Type: application/octet-stream`、本文の先頭が `1f 8b`）。サーバは先頭を見て展開する（圧縮していない JSON も受け取る）。
   ConoHa WING の WAF は、本文の文章に攻撃に似た言葉の並び（例：`select * from <script>`）があると 403（「閲覧できません (Forbidden access)」の HTML・CORS ヘッダなし）を返し、アプリには「返事を読めない」としか見えないため。圧縮すると WAF は中身を見ない（本物のサーバで確認・v0.14.4）。写真（JPEG）はそのままで通る。
 - `put`：サーバの記録の `updatedAt` のほうが新しければ保存せず `rejected` で返す（アプリはそれを取り込む）。同じ `updatedAt` なら何もしない（送り直しても安全）。
 - `updatedAt` は ISO 形式（`2026-11-14T01:00:00.000Z`）。

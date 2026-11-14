@@ -126,12 +126,22 @@ export async function markAllPending() {
 }
 
 // ---------- サーバとのやりとり ----------
-// JSON を gzip で圧縮する（ConoHa の WAF が文章の中身で通信を止めないように）。使えないブラウザでは圧縮しない。
+// ConoHa の WAF は、送る中身に攻撃に似たバイトの並びがあると通信を止める（文章だけでなく、写真や圧縮したデータでも偶然起きる。
+// 本物のサーバで写真 30 枚中 8 枚が止められた）。そのため中身を「B64:」＋ base64url（英数字と - _ だけ）にして送る。
+// 記録の JSON は gzip で圧縮してから変換する（使えないブラウザでは圧縮しない）。サーバ（sync.php）が元に戻す。
+async function toBase64Url(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function packBlob(blob) {
+  return { body: 'B64:' + (await toBase64Url(blob)), type: 'text/plain' };
+}
 async function gzipJson(obj) {
-  const text = JSON.stringify(obj);
-  if (typeof CompressionStream === 'undefined') return { body: text, type: 'application/json' };
-  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
-  return { body: await new Response(stream).blob(), type: 'application/octet-stream' };
+  let blob = new Blob([JSON.stringify(obj)]);
+  if (typeof CompressionStream !== 'undefined') blob = await new Response(blob.stream().pipeThrough(new CompressionStream('gzip'))).blob();
+  return packBlob(blob);
 }
 
 async function api(a, { params = {}, method = 'GET', json, body, blob = false } = {}) {
@@ -140,8 +150,8 @@ async function api(a, { params = {}, method = 'GET', json, body, blob = false } 
   url.searchParams.set('a', a);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const headers = { 'X-Sync-Auth': s.auth, 'X-Device': encodeURIComponent(s.device || defaultDeviceName()) };
-  if (json) {
-    const packed = await gzipJson(json);
+  if (json || body instanceof Blob) {
+    const packed = json ? await gzipJson(json) : await packBlob(body);
     body = packed.body;
     headers['Content-Type'] = packed.type;
   }
@@ -151,8 +161,9 @@ async function api(a, { params = {}, method = 'GET', json, body, blob = false } 
   try {
     res = await fetch(url, { method, headers, body, signal: ctrl.signal, cache: 'no-store' });
   } catch (e) {
-    if (e.name === 'AbortError') throw new Error('サーバの応答がありません（時間切れ）');
-    throw new Error(await diagnose(s.url));
+    const where = { pmissing: '写真の確認', pput: '写真を送る', put: '記録を送る', changes: '記録を受け取る', photo: '写真を受け取る', meta: '接続の確認' }[a] || a;
+    if (e.name === 'AbortError') throw new Error(`サーバの応答がありません（時間切れ・${where}）`);
+    throw new Error(`${await diagnose(s.url)}【止まったところ：${where}】`);
   } finally {
     clearTimeout(timer);
   }
@@ -174,7 +185,10 @@ async function api(a, { params = {}, method = 'GET', json, body, blob = false } 
       php: `サーバの PHP でエラーが出ています：${detail}`,
       too_large: '大きすぎて送れませんでした',
       gzip: 'サーバで圧縮したデータを読めませんでした（サーバの PHP に zlib が必要）',
+      base64: 'サーバが送ったデータを読めませんでした（サーバの sync.php を最新の版に置き直してください）',
       format: 'サーバが送ったデータを読めませんでした（サーバの sync.php を最新の版に置き直してください）',
+      write: 'サーバに保存できませんでした（ConoHa のフォルダの書き込み権限・空き容量を確認）',
+      mkdir: 'サーバに保存用のフォルダを作れませんでした（ConoHa のフォルダの書き込み権限を確認）',
     }[code];
     throw new Error(msg || `サーバのエラー（${res.status}${code ? ' ' + code : ''}）`);
   }
