@@ -15,9 +15,26 @@ const CHUNK = 100;
 export const DEFAULT_URL = 'https://nuts024.com/sanpo/sync.php';
 
 // ---------- 設定 ----------
+// URL がフォルダで終わっていたら sync.php を足す（"https://…/sanpo/" や "https://…/sanpo" でも動くように）
+export function normalizeUrl(u) {
+  const text = String(u || '').trim();
+  if (!text) return text;
+  try {
+    const x = new URL(text);
+    if (!/\.php$/i.test(x.pathname)) x.pathname = x.pathname.replace(/\/?$/, '/') + 'sync.php';
+    x.search = '';
+    x.hash = '';
+    return x.href;
+  } catch {
+    return text;
+  }
+}
+
 export function loadSettings() {
   try {
-    return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {};
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {};
+    if (s.url) s.url = normalizeUrl(s.url);
+    return s;
   } catch {
     return {};
   }

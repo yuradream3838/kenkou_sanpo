@@ -1,7 +1,7 @@
 // ⚙設定の「☁️ ConoHa 同期」と「🤖 AI 用の窓口」。
 import * as db from './db.js';
 import {
-  DEFAULT_URL, loadSettings, saveSettings, isConfigured, defaultDeviceName, deriveAuth, newReadToken, aiUrl,
+  DEFAULT_URL, normalizeUrl, loadSettings, saveSettings, isConfigured, defaultDeviceName, deriveAuth, newReadToken, aiUrl,
   getStatus, onStatus, pendingCount, markAllPending, syncNow, testConnection,
 } from './sync.js';
 
@@ -125,7 +125,7 @@ export async function renderSyncSection(el, { esc, toast }) {
       const { auth, authHash } = await deriveAuth(pass);
       saveSettings({
         ...loadSettings(),
-        url: String(fd.get('url')).trim(),
+        url: normalizeUrl(fd.get('url')),
         device: String(fd.get('device') || '').trim() || defaultDeviceName(),
         auth,
         authHash,

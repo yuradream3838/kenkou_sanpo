@@ -2,6 +2,13 @@
 // 先頭の version がアプリのバージョン（APP_VERSION）になる。sw.js の VERSION も合わせて上げること。
 export const CHANGELOG = [
   {
+    version: '0.14.2',
+    date: '2026-11-14',
+    items: [
+      '☁️ 同期：サーバの URL を「…/sanpo/」のようにフォルダまでで入れたときに「返事を読めません」となる問題を修正しました（自動で sync.php を付けます）。',
+    ],
+  },
+  {
     version: '0.14.1',
     date: '2026-11-14',
     items: [
