@@ -17,16 +17,22 @@ $SANPO_CONFIG_ERROR = null;   // null（問題なし）／'config'（無い）�
 if (!file_exists(__DIR__ . '/config.php')) {
   $SANPO_CONFIG_ERROR = 'config';
 } else {
+  // config.php の先頭の BOM（見えない文字）・最初の行より前の空行・ファイルの最後の閉じタグの後ろの改行などが
+  // 出力されると、ヘッダ（CORS）を付けられなくなり、アプリが返事を読めなくなる。読み込むときの出力は捨てる。
+  ob_start();
   try {
     require __DIR__ . '/config.php';
     if (!defined('SANPO_AUTH_HASH') || !defined('SANPO_READ_HASH')) $SANPO_CONFIG_ERROR = 'config_syntax';
   } catch (Throwable $e) {
     $SANPO_CONFIG_ERROR = 'config_syntax';
   }
+  ob_end_clean();
 }
 
+// 許可するサイト（最後の / は無視する。"https://yuradream3838.github.io/" と書いても通るように）
 function allowedOrigins(): array {
-  return defined('SANPO_ALLOWED_ORIGINS') && is_array(SANPO_ALLOWED_ORIGINS) ? SANPO_ALLOWED_ORIGINS : SANPO_DEFAULT_ORIGINS;
+  $list = defined('SANPO_ALLOWED_ORIGINS') && is_array(SANPO_ALLOWED_ORIGINS) ? SANPO_ALLOWED_ORIGINS : SANPO_DEFAULT_ORIGINS;
+  return array_map(fn($o) => rtrim(trim((string)$o), '/'), $list);
 }
 
 function sendCors(): void {
