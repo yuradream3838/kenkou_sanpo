@@ -2,6 +2,14 @@
 // 先頭の version がアプリのバージョン（APP_VERSION）になる。sw.js の VERSION も合わせて上げること。
 export const CHANGELOG = [
   {
+    version: '0.14.1',
+    date: '2026-11-14',
+    items: [
+      '☁️ 同期で「サーバにつながりません」としか出なかった場面で、原因（config.php が無い・書き間違い・URL のフォルダ違い・http:// のまま など）を表示するようにしました。',
+      'サーバ側（sync.php・ai.php・common.php）も、設定のまちがいや PHP のエラーをアプリが読める形で返すようにしました（サーバのファイルも置き直してください）。',
+    ],
+  },
+  {
     version: '0.14.0',
     date: '2026-11-14',
     items: [

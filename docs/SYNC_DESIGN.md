@@ -1,6 +1,6 @@
 # 発見ノート ☁️ 同期・AI 閲覧（仕様）
 
-最終更新: v0.14.0（2026-11-14）
+最終更新: v0.14.1（2026-11-14）
 
 健康管理アプリ（yuradream3838/health-app）の ConoHa 同期（`sync.php`）を参考にしているが、
 **写真を扱うため・AI から読むため**に、仕組みは別物にしている（2章）。
@@ -82,7 +82,18 @@ rev.txt            今の通し番号
 
 - `put`：サーバの記録の `updatedAt` のほうが新しければ保存せず `rejected` で返す（アプリはそれを取り込む）。同じ `updatedAt` なら何もしない（送り直しても安全）。
 - `updatedAt` は ISO 形式（`2026-11-14T01:00:00.000Z`）。
-- エラー：400 `format`/`items`/`ids`/`id`/`action`、405 `method`、413 `too_large`、500 `config`/`mkdir`/`lock`/`write`。
+- エラー：400 `format`/`items`/`ids`/`id`/`action`、405 `method`、413 `too_large`、500 `config`（config.php が無い）/`config_syntax`（書き間違い・定数が足りない）/`php`（PHP のエラー。`message` に内容）/`mkdir`/`lock`/`write`。
+- **どの応答にも先に CORS ヘッダを付ける**（config.php が無いときは `https://yuradream3838.github.io` を許す）。付けないとブラウザは理由を読めず、アプリには「つながらない」としか出せないため（v0.14.1）。
+
+### 4-1. つながらないときの見分け方（アプリ）
+
+| アプリの表示 | 原因 |
+|---|---|
+| 合言葉が違います | `SANPO_AUTH_HASH` が貼っていない・違う |
+| config.php がありません／書き間違いがあります | `config.php` の置き忘れ・`'` の閉じ忘れなど |
+| サーバには届いていますが、返事を読めませんでした | URL のフォルダ名・ファイル名の違い（ページが見つからない）など。sync.php を直接開いて確かめる（正常なら `{"error":"auth"}`） |
+| サーバにつながりません | ドメインの違い・電波 |
+| https:// で始めてください | URL が `http://` |
 
 ## 5. ai.php（AI 用・読むだけ）
 

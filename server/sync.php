@@ -15,16 +15,11 @@
 
 require __DIR__ . '/common.php';
 
+sendCors();
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-if (in_array($origin, SANPO_ALLOWED_ORIGINS, true)) {
-  header('Access-Control-Allow-Origin: ' . $origin);
-  header('Vary: Origin');
-  header('Access-Control-Allow-Headers: X-Sync-Auth, X-Device, Content-Type');
-  header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-  header('Access-Control-Max-Age: 600');
-}
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { http_response_code(204); exit; }
-if ($origin !== '' && !in_array($origin, SANPO_ALLOWED_ORIGINS, true)) out(403, ['error' => 'origin']);
+if ($origin !== '' && !in_array($origin, allowedOrigins(), true)) out(403, ['error' => 'origin']);
+if ($SANPO_CONFIG_ERROR) out(500, ['error' => $SANPO_CONFIG_ERROR]);
 
 if (!tokenMatches($_SERVER['HTTP_X_SYNC_AUTH'] ?? '', SANPO_AUTH_HASH)) {
   usleep(400000);
@@ -33,7 +28,8 @@ if (!tokenMatches($_SERVER['HTTP_X_SYNC_AUTH'] ?? '', SANPO_AUTH_HASH)) {
 
 $a = $_GET['a'] ?? 'meta';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-$device = mb_substr(rawurldecode((string)($_SERVER['HTTP_X_DEVICE'] ?? '')), 0, 40);
+$deviceRaw = rawurldecode((string)($_SERVER['HTTP_X_DEVICE'] ?? ''));
+$device = function_exists('mb_substr') ? mb_substr($deviceRaw, 0, 40) : substr($deviceRaw, 0, 120);
 
 function readBody(int $max): string {
   $len = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);

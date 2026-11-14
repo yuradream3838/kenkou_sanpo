@@ -122,21 +122,27 @@ async function api(a, { params = {}, method = 'GET', json, body, blob = false } 
   try {
     res = await fetch(url, { method, headers, body: json ? JSON.stringify(json) : body, signal: ctrl.signal, cache: 'no-store' });
   } catch (e) {
-    throw new Error(e.name === 'AbortError' ? 'サーバの応答がありません' : 'サーバにつながりません（電波・URL を確認）');
+    if (e.name === 'AbortError') throw new Error('サーバの応答がありません（時間切れ）');
+    throw new Error(await diagnose(s.url));
   } finally {
     clearTimeout(timer);
   }
   if (!res.ok) {
     let code = '';
+    let detail = '';
     try {
-      code = (await res.json()).error || '';
+      const j = await res.json();
+      code = j.error || '';
+      detail = j.message || '';
     } catch {
       /* noop */
     }
     const msg = {
-      auth: '合言葉が違います（サーバに貼った値とそろっているか確認）',
-      origin: 'このサイトからの接続がサーバで許可されていません（ALLOWED_ORIGINS）',
-      config: 'サーバに config.php がありません',
+      auth: '合言葉が違います（config.php の SANPO_AUTH_HASH に「サーバに貼る値」が貼ってあるか確認）',
+      origin: 'このサイトからの接続がサーバで許可されていません（config.php の SANPO_ALLOWED_ORIGINS を確認）',
+      config: 'サーバに config.php がありません（config.php.example を config.php という名前でコピーして、sync.php と同じフォルダに置く）',
+      config_syntax: 'サーバの config.php に書き間違いがあります（貼った値を \' \' で囲んでいるか、行の最後の ; があるか確認）',
+      php: `サーバの PHP でエラーが出ています：${detail}`,
       too_large: '大きすぎて送れませんでした',
     }[code];
     throw new Error(msg || `サーバのエラー（${res.status}${code ? ' ' + code : ''}）`);
@@ -146,6 +152,27 @@ async function api(a, { params = {}, method = 'GET', json, body, blob = false } 
 
 export async function testConnection() {
   return api('meta');
+}
+
+// つながらなかった理由をできるだけ見分ける
+async function diagnose(url) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return 'サーバの URL の書き方が正しくありません';
+  }
+  if (location.protocol === 'https:' && u.protocol !== 'https:') {
+    return 'サーバの URL を https:// で始めてください（http:// だとブラウザが接続を止めます）';
+  }
+  if (!navigator.onLine) return '電波がありません（オフライン）';
+  // 中身は読めなくても、サーバまで届くかだけを確かめる
+  try {
+    await fetch(u.href, { mode: 'no-cors', cache: 'no-store' });
+    return 'サーバには届いていますが、返事を読めませんでした。ブラウザで sync.php の URL を直接開いて、表示を確かめてください（{"error":"auth"} と出れば正常。ページが見つからない表示ならフォルダ名・ファイル名の違い）';
+  } catch {
+    return 'サーバにつながりません。URL のドメイン・フォルダ名と電波を確認してください';
+  }
 }
 
 // ---------- 記録の形をそろえる ----------

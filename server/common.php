@@ -10,13 +10,48 @@
 
 declare(strict_types=1);
 
+// config.php が無い・書き間違いがあるときでも、アプリ（ブラウザ）が理由を読めるように、
+// どの応答にも先に「このサイトからの呼び出しを許す」ヘッダを付ける。
+const SANPO_DEFAULT_ORIGINS = ['https://yuradream3838.github.io'];
+$SANPO_CONFIG_ERROR = null;   // null（問題なし）／'config'（無い）／'config_syntax'（書き間違い）
 if (!file_exists(__DIR__ . '/config.php')) {
-  http_response_code(500);
-  header('Content-Type: application/json; charset=utf-8');
-  echo '{"error":"config"}';
-  exit;
+  $SANPO_CONFIG_ERROR = 'config';
+} else {
+  try {
+    require __DIR__ . '/config.php';
+    if (!defined('SANPO_AUTH_HASH') || !defined('SANPO_READ_HASH')) $SANPO_CONFIG_ERROR = 'config_syntax';
+  } catch (Throwable $e) {
+    $SANPO_CONFIG_ERROR = 'config_syntax';
+  }
 }
-require __DIR__ . '/config.php';
+
+function allowedOrigins(): array {
+  return defined('SANPO_ALLOWED_ORIGINS') && is_array(SANPO_ALLOWED_ORIGINS) ? SANPO_ALLOWED_ORIGINS : SANPO_DEFAULT_ORIGINS;
+}
+
+function sendCors(): void {
+  $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+  if ($origin !== '' && in_array($origin, allowedOrigins(), true) && !headers_sent()) {
+    header('Access-Control-Allow-Origin: ' . $origin);
+    header('Vary: Origin');
+    header('Access-Control-Allow-Headers: X-Sync-Auth, X-Device, Content-Type');
+    header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+    header('Access-Control-Max-Age: 600');
+  }
+}
+
+// PHP のエラーで止まったときも、理由を JSON で返す（画面にエラーの文字を出さない）
+ini_set('display_errors', '0');
+register_shutdown_function(function () {
+  $e = error_get_last();
+  if (!$e || !in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) return;
+  if (!headers_sent()) {
+    sendCors();
+    http_response_code(500);
+    header('Content-Type: application/json; charset=utf-8');
+  }
+  echo json_encode(['error' => 'php', 'message' => $e['message'] . ' (' . basename((string)$e['file']) . ':' . $e['line'] . ')'], JSON_UNESCAPED_UNICODE);
+});
 
 date_default_timezone_set('Asia/Tokyo');
 header('Cache-Control: no-store');

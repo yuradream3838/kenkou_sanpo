@@ -17,6 +17,8 @@ require __DIR__ . '/common.php';
 
 const PER_PAGE = 50;
 
+if ($SANPO_CONFIG_ERROR) out(500, ['error' => $SANPO_CONFIG_ERROR, 'message' => 'サーバの config.php を確認してください。']);
+
 $token = $_GET['t'] ?? '';
 if (!tokenMatches($token, SANPO_READ_HASH)) {
   usleep(400000);

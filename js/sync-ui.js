@@ -41,6 +41,7 @@ export async function renderSyncSection(el, { esc, toast }) {
             <button type="button" class="btn ghost small" data-copy="${esc(s.authHash || '')}">コピー</button></li>
           <li>「接続を確かめる」を押す。つながると、この端末の記録を送り、サーバの記録を受け取ります。</li>
         </ol>
+        <p class="small muted">つながらないときは <a href="${esc(s.url)}">sync.php を直接開いて</a>表示を確かめてください。<code>{"error":"auth"}</code> と出れば、置き方は正しく、あとは貼る値の問題です。<code>{"error":"config"}</code> なら config.php がありません。</p>
         <div class="row">
           <button type="button" class="btn primary" id="sync-test">接続を確かめる</button>
           <button type="button" class="btn ghost small" id="sync-forget">設定をやり直す</button>
